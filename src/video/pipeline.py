@@ -22,7 +22,7 @@ from src.db.database import (
     Category, Segment, VideoSession,
     create_video_session, get_categories, save_segment, update_session_status,
 )
-from src.video.classifier import classify_segment
+from src.video.classifier import classify_segments_batch
 from src.video.report import generate_html_report
 
 logger = logging.getLogger("unified.video_pipeline")
@@ -77,20 +77,20 @@ def run_pipeline(
         categories: list[Category] = get_categories()
         n = len(segments_raw)
 
-        # 7. Por cada segmento: keyframe + clasificación + guardado
-        saved_segments: list[Segment] = []
-        for i, seg in enumerate(segments_raw):
-            pct = 0.40 + (i / max(n, 1)) * 0.45
-            progress(f"Procesando segmento {i+1}/{n}...", pct)
+        # 7. Clasificar todos los segmentos en batch (ceil(n/30) llamadas al LLM)
+        progress("Clasificando segmentos...", 0.40)
+        texts = [s["text"] for s in segments_raw]
+        cat_ids = classify_segments_batch(texts, categories) if categories else [None] * n
 
-            # Extraer keyframe al punto medio del segmento
+        # 8. Extraer keyframes y guardar en BD
+        saved_segments: list[Segment] = []
+        for i, (seg, cat_id) in enumerate(zip(segments_raw, cat_ids)):
+            pct = 0.55 + (i / max(n, 1)) * 0.30
+            progress(f"Guardando segmento {i+1}/{n}...", pct)
+
             mid = (seg["start"] + seg["end"]) / 2
             frame_path = _extract_keyframe(video_path, mid, session_dir, i)
 
-            # Clasificar con LLM
-            cat_id = classify_segment(seg["text"], categories) if categories else None
-
-            # Guardar en BD
             saved = save_segment(Segment(
                 id=None,
                 session_id=session.id,
@@ -102,11 +102,11 @@ def run_pipeline(
             ))
             saved_segments.append(saved)
 
-        # 8. Generar reporte HTML
+        # 9. Generar reporte HTML
         progress("Generando reporte HTML...", 0.88)
         html_path = generate_html_report(session, saved_segments, categories, session_dir)
 
-        # 9. Marcar sesión como completada
+        # 10. Marcar sesión como completada
         update_session_status(session.id, "done", html_report=str(html_path))
         session.status = "done"
         session.html_report = str(html_path)
