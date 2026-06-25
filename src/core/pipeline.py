@@ -151,11 +151,17 @@ class CallCopilotPipeline:
 
     def _content_trigger_delay(self, last_segment_text: str) -> float:
         """
-        Returns 0 to fire the LLM immediately (content boundary detected),
-        or self._inactivity_timeout to wait for silence as usual.
+        Returns a reduced delay when a sentence/clause boundary is detected,
+        or the full inactivity timeout otherwise.
 
-        Mirrors the video pipeline logic: scan the full accumulated context
-        for the last sentence/clause boundary past the word-count threshold.
+        Uses a debounce approach: never returns 0. Each incoming segment
+        cancels the previous timer, so the reduced delay only expires when
+        the speaker actually pauses — continuous speech always resets the timer
+        before it fires.
+
+          sentence end (.?!) + >=min words → 0.4s debounce
+          clause end  (,;)   + >=mid words → 0.8s debounce
+          no boundary found               → 2.0s (full silence timer)
         """
         context = " ".join(self._segments)
         words = context.split()
@@ -163,23 +169,20 @@ class CallCopilotPipeline:
 
         last_char = last_segment_text.rstrip()[-1:] if last_segment_text.strip() else ""
 
-        # Clean sentence end with enough content → fire immediately
         if word_count >= self._min_trigger_words and last_char in _SENTENCE_END:
-            return 0.0
+            return 0.4
 
-        # Clause boundary with more content → fire with a short delay so
-        # the speaker can continue if it was just a mid-sentence comma
         if word_count >= self._mid_trigger_words and last_char in _CLAUSE_END:
-            return 0.5
+            return 0.8
 
-        # Scan full context for the last sentence boundary past min threshold
+        # Scan full context for last sentence/clause boundary
         if word_count >= self._min_trigger_words:
             for i in range(len(words) - 2, self._min_trigger_words - 1, -1):
                 lc = words[i][-1:] if words[i] else ""
                 if lc in _SENTENCE_END:
-                    return 0.0
+                    return 0.4
                 if lc in _CLAUSE_END and word_count >= self._mid_trigger_words:
-                    return 0.5
+                    return 0.8
 
         return self._inactivity_timeout
 
