@@ -10,6 +10,9 @@ import logging
 from collections import deque
 from typing import Callable, Optional
 
+_SENTENCE_END = frozenset(".?!")
+_CLAUSE_END   = frozenset(",;")
+
 from src.core.interfaces import (
     AudioSource,
     STTProvider,
@@ -38,6 +41,8 @@ class CallCopilotPipeline:
         llm_enabled: bool = True,
         initial_context: str = "",
         on_segment: Optional[Callable[[TranscriptSegment], None]] = None,
+        min_trigger_words: int = 15,
+        mid_trigger_words: int = 40,
     ):
         self.audio_source = audio_source
         self.vad = vad
@@ -49,6 +54,8 @@ class CallCopilotPipeline:
         self.initial_context = initial_context
         self.session_logger = SessionLogger(initial_context=initial_context)
         self.on_segment = on_segment
+        self._min_trigger_words = min_trigger_words
+        self._mid_trigger_words = mid_trigger_words
 
         self._running = False
         self._segments: deque[str] = deque(maxlen=10)
@@ -113,13 +120,15 @@ class CallCopilotPipeline:
                 deduped.append(tok)
         return " ".join(deduped)
 
-    async def _inactivity_trigger(self) -> None:
+    async def _inactivity_trigger(self, delay: float | None = None) -> None:
         try:
-            await asyncio.sleep(self._inactivity_timeout)
+            await asyncio.sleep(
+                delay if delay is not None else self._inactivity_timeout
+            )
             await self._handle_trigger(TriggerEvent(
                 reason=TriggerReason.SILENCE_TIMEOUT,
                 context_text="",
-                confidence=0.6,
+                confidence=0.8 if (delay is not None and delay < self._inactivity_timeout) else 0.6,
             ))
         except asyncio.CancelledError:
             pass
@@ -136,7 +145,43 @@ class CallCopilotPipeline:
 
         if self._inactivity_task:
             self._inactivity_task.cancel()
-        self._inactivity_task = asyncio.create_task(self._inactivity_trigger())
+
+        delay = self._content_trigger_delay(segment.text)
+        self._inactivity_task = asyncio.create_task(self._inactivity_trigger(delay))
+
+    def _content_trigger_delay(self, last_segment_text: str) -> float:
+        """
+        Returns 0 to fire the LLM immediately (content boundary detected),
+        or self._inactivity_timeout to wait for silence as usual.
+
+        Mirrors the video pipeline logic: scan the full accumulated context
+        for the last sentence/clause boundary past the word-count threshold.
+        """
+        context = " ".join(self._segments)
+        words = context.split()
+        word_count = len(words)
+
+        last_char = last_segment_text.rstrip()[-1:] if last_segment_text.strip() else ""
+
+        # Clean sentence end with enough content → fire immediately
+        if word_count >= self._min_trigger_words and last_char in _SENTENCE_END:
+            return 0.0
+
+        # Clause boundary with more content → fire with a short delay so
+        # the speaker can continue if it was just a mid-sentence comma
+        if word_count >= self._mid_trigger_words and last_char in _CLAUSE_END:
+            return 0.5
+
+        # Scan full context for the last sentence boundary past min threshold
+        if word_count >= self._min_trigger_words:
+            for i in range(len(words) - 2, self._min_trigger_words - 1, -1):
+                lc = words[i][-1:] if words[i] else ""
+                if lc in _SENTENCE_END:
+                    return 0.0
+                if lc in _CLAUSE_END and word_count >= self._mid_trigger_words:
+                    return 0.5
+
+        return self._inactivity_timeout
 
     async def _handle_trigger(self, trigger_event) -> None:
         context = self._clean_context()
