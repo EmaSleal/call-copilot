@@ -112,6 +112,7 @@ class CallCopilotTab(TabPane):
         yield Label("Transcripción en vivo:", id="lbl-transcript")
         yield RichLog(id="transcript-log", highlight=True, markup=True, wrap=True)
         yield Label("Sugerencia del copiloto:", id="lbl-suggestion")
+        yield Static("", id="suggestion-live")
         yield RichLog(id="suggestion-log", highlight=True, markup=True, wrap=True)
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
@@ -146,13 +147,25 @@ class CallCopilotTab(TabPane):
 
         transcript_log  = self.query_one("#transcript-log",  RichLog)
         suggestion_log  = self.query_one("#suggestion-log",  RichLog)
+        suggestion_live = self.query_one("#suggestion-live", Static)
 
         class TUIOutput:
+            def __init__(self):
+                self._buf = ""
+
             async def emit(self, response: LLMResponse):
                 if response.is_partial:
-                    suggestion_log.write(response.text, end="")
+                    self._buf += response.text
+                    suggestion_live.update(self._buf)
                 else:
-                    suggestion_log.write("\n[dim]─────────────────────────────[/dim]")
+                    if self._buf:
+                        suggestion_log.write(self._buf)
+                        self._buf = ""
+                    elif response.text:
+                        # error responses arrive as non-partial with no prior chunks
+                        suggestion_log.write(f"[red]{response.text}[/red]")
+                    suggestion_log.write("[dim]─────────────────────────────[/dim]")
+                    suggestion_live.update("")
 
         def on_segment(segment: TranscriptSegment) -> None:
             ts = datetime.now().strftime("%H:%M:%S")
@@ -178,6 +191,8 @@ class CallCopilotTab(TabPane):
             await self._pipeline.start()
         except asyncio.CancelledError:
             pass
+        except Exception as e:
+            suggestion_log.write(f"[red]Error en pipeline: {e}[/red]")
         finally:
             await self._pipeline.stop()
 
@@ -505,7 +520,8 @@ class UnifiedApp(App):
     Input { margin-bottom: 1; }
     Label { color: #94a3b8; margin-bottom: 0; }
     Button { margin-right: 1; }
-    RichLog { height: 12; border: solid #334155; background: #1e293b; padding: 0 1; }
+    RichLog { height: 10; border: solid #334155; background: #1e293b; padding: 0 1; }
+    #suggestion-live { height: 5; border: dashed #4f46e5; background: #1e1e2e; padding: 0 1; color: #e2e8f0; }
     DataTable { height: 15; border: solid #334155; background: #1e293b; }
     #call-buttons { margin-bottom: 1; }
     #cat-layout { height: 1fr; }
@@ -569,13 +585,15 @@ def _build_stt():
 
 
 def _build_llm():
-    backend = os.getenv("LLM_BACKEND", "gpt")
+    backend = os.getenv("LLM_BACKEND", "claude")
     if backend == "gpt":
         from src.llm.openai_provider import OpenAIProvider
         return OpenAIProvider(
             api_key=os.getenv("OPENAI_API_KEY"),
             token_threshold=int(os.getenv("LLM_TOKEN_THRESHOLD", "500"))
         )
+    # "claude" is the default; "ollama" is not supported for the copilot LLM
+    # (Ollama is used in the video classifier, not for real-time streaming)
     from src.llm.claude_provider import ClaudeProvider
     return ClaudeProvider(api_key=os.getenv("ANTHROPIC_API_KEY"))
 

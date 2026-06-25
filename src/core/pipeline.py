@@ -153,10 +153,15 @@ class CallCopilotPipeline:
         base = f"{self.initial_context}\n\n{context}".strip() if self.initial_context else context
         full_context = f"{base}\n\n(Transcripción completa en whisper-text/{self.session_logger.session_id}.txt se filtra por linea por hora ej: [21:29:18])"
         full_response = ""
-        async for response in self.llm.respond(full_context, trigger_event):
-            await self.output.emit(response)
-            if not response.is_partial:
-                full_response = response.text
+        try:
+            async for response in self.llm.respond(full_context, trigger_event):
+                await self.output.emit(response)
+                if not response.is_partial:
+                    full_response = response.text
+        except Exception as e:
+            logger.error("error calling LLM: %s", e, exc_info=True)
+            from src.core.interfaces import LLMResponse
+            await self.output.emit(LLMResponse(text=f"[LLM error: {e}]", is_partial=False))
 
         self.session_logger.log_response(context, full_response)
         self._segments.clear()
