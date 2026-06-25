@@ -162,17 +162,24 @@ def _download_video(url: str, out_dir: Path) -> Optional[Path]:
 
 
 _SENTENCE_END = frozenset(".?!")
+_CLAUSE_END   = frozenset(",;")
 
 
 def _merge_segments(
     segments: list[dict],
-    min_words: int = 50,
-    max_words: int = 150,
+    min_words: int = 40,
+    mid_words: int = 70,
+    max_words: int = 120,
 ) -> list[dict]:
     """
-    Merges Whisper's short segments into complete-idea segments.
-    Flushes when: word_count >= min_words AND last char is . ? !
-                  OR word_count >= max_words (forced flush).
+    Merges Whisper segments into complete-idea segments.
+
+    Break priority (first match wins):
+    1. >= min_words AND ends with . ? !  → natural sentence break
+    2. >= mid_words AND ends with , ;    → clause break
+    3. >= max_words                      → forced break, scanning back for
+                                           the last sentence/clause boundary
+                                           before cutting hard
     """
     if not segments:
         return segments
@@ -181,29 +188,63 @@ def _merge_segments(
     buf: list[dict] = []
     word_count = 0
 
+    def flush(b: list[dict]) -> None:
+        merged.append({
+            "start": b[0]["start"],
+            "end":   b[-1]["end"],
+            "text":  " ".join(s["text"].strip() for s in b),
+        })
+
     for seg in segments:
         buf.append(seg)
         word_count += len(seg["text"].split())
         last_char = seg["text"].rstrip()[-1:] if seg["text"].strip() else ""
 
-        if (word_count >= min_words and last_char in _SENTENCE_END) or word_count >= max_words:
-            merged.append({
-                "start": buf[0]["start"],
-                "end":   buf[-1]["end"],
-                "text":  " ".join(s["text"].strip() for s in buf),
-            })
-            buf = []
-            word_count = 0
+        if word_count >= min_words and last_char in _SENTENCE_END:
+            flush(buf); buf = []; word_count = 0
+        elif word_count >= mid_words and last_char in _CLAUSE_END:
+            flush(buf); buf = []; word_count = 0
+        elif word_count >= max_words:
+            split_at = _find_split(buf, min_words)
+            if split_at is not None:
+                flush(buf[:split_at + 1])
+                buf = buf[split_at + 1:]
+                word_count = sum(len(s["text"].split()) for s in buf)
+            else:
+                flush(buf); buf = []; word_count = 0
 
     if buf:
-        merged.append({
-            "start": buf[0]["start"],
-            "end":   buf[-1]["end"],
-            "text":  " ".join(s["text"].strip() for s in buf),
-        })
+        flush(buf)
 
     logger.info("merged %d raw segments → %d idea segments", len(segments), len(merged))
     return merged
+
+
+def _find_split(buf: list[dict], min_words: int) -> int | None:
+    """
+    Scans buf backwards for the best split index: last segment ending with
+    . ? ! (preferred) or , ; (fallback), with at least min_words before it.
+    """
+    cum, total = [], 0
+    for s in buf:
+        total += len(s["text"].split())
+        cum.append(total)
+
+    best_sentence: int | None = None
+    best_clause:   int | None = None
+
+    for i in range(len(buf) - 2, -1, -1):
+        if cum[i] < min_words:
+            break
+        lc = buf[i]["text"].rstrip()[-1:] if buf[i]["text"].strip() else ""
+        if lc in _SENTENCE_END and best_sentence is None:
+            best_sentence = i
+        if lc in _CLAUSE_END and best_clause is None:
+            best_clause = i
+        if best_sentence is not None and best_clause is not None:
+            break
+
+    return best_sentence if best_sentence is not None else best_clause
 
 
 def _extract_keyframe(video_path: Optional[Path], ts: float,
