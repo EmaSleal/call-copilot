@@ -204,6 +204,7 @@ class VideoTab(TabPane):
 
     def _setup_table(self) -> None:
         table = self.query_one("#sessions-table", DataTable)
+        table.cursor_type = "row"
         table.add_columns("ID", "Título", "Estado", "Fecha", "Segmentos")
 
     def _setup_suggestions_table(self) -> None:
