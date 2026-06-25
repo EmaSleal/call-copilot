@@ -8,7 +8,7 @@ Claude/GPT sean intercambiables vía config sin tocar esta clase.
 import asyncio
 import logging
 from collections import deque
-from typing import Optional
+from typing import Callable, Optional
 
 from src.core.interfaces import (
     AudioSource,
@@ -37,6 +37,7 @@ class CallCopilotPipeline:
         output: OutputSink,
         llm_enabled: bool = True,
         initial_context: str = "",
+        on_segment: Optional[Callable[[TranscriptSegment], None]] = None,
     ):
         self.audio_source = audio_source
         self.vad = vad
@@ -47,6 +48,7 @@ class CallCopilotPipeline:
         self.llm_enabled = llm_enabled
         self.initial_context = initial_context
         self.session_logger = SessionLogger(initial_context=initial_context)
+        self.on_segment = on_segment
 
         self._running = False
         self._segments: deque[str] = deque(maxlen=10)
@@ -125,6 +127,9 @@ class CallCopilotPipeline:
     async def _handle_segment(self, segment: TranscriptSegment) -> None:
         if not segment.is_final:
             return
+
+        if self.on_segment:
+            self.on_segment(segment)
 
         self._segments.append(segment.text)
         self.session_logger.log_transcript(segment.text)

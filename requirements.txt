@@ -1,9 +1,25 @@
-PyAudioWPatch==0.2.12.7      # WASAPI loopback en Windows
+# ── Audio / VAD ────────────────────────────────────────────
+PyAudioWPatch==0.2.12.7
 numpy>=1.24
-torch>=2.0                    # requerido por Silero VAD
-faster-whisper>=1.0           # STT local (modo whisper_local)
-websockets>=12.0              # cliente WS para Deepgram
-anthropic>=0.40                # Claude API con soporte de streaming
-openai>=1.0                    # OpenAI API con soporte de streaming async
-torchaudio>=2.0
-python-dotenv>=0.19
+torch>=2.0
+
+# ── STT ────────────────────────────────────────────────────
+faster-whisper>=1.0          # STT local (whisper_local)
+openai-whisper>=20231117     # Video transcriber (batch)
+websockets>=12.0             # Deepgram streaming
+
+# ── LLM ────────────────────────────────────────────────────
+anthropic>=0.40
+openai>=1.30
+
+# ── Video ──────────────────────────────────────────────────
+yt-dlp>=2024.1.0             # descarga de video/audio
+
+# ── BD ─────────────────────────────────────────────────────
+# sqlite3 viene con Python — sin dependencia externa
+
+# ── TUI ────────────────────────────────────────────────────
+textual>=0.60.0
+
+# ── Utilitarios ────────────────────────────────────────────
+python-dotenv>=1.0

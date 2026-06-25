@@ -1,5 +1,6 @@
 # Environment
 .env
+example copy.env
 
 # Claude Code metadata
 .atl/
