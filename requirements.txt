@@ -1,0 +1,9 @@
+PyAudioWPatch==0.2.12.7      # WASAPI loopback en Windows
+numpy>=1.24
+torch>=2.0                    # requerido por Silero VAD
+faster-whisper>=1.0           # STT local (modo whisper_local)
+websockets>=12.0              # cliente WS para Deepgram
+anthropic>=0.40                # Claude API con soporte de streaming
+openai>=1.0                    # OpenAI API con soporte de streaming async
+torchaudio>=2.0
+python-dotenv>=0.19
