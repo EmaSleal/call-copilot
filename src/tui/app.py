@@ -283,22 +283,19 @@ class VideoTab(TabPane):
     async def _analyze_others(self, session_id: int) -> None:
         from src.video.classifier import suggest_new_categories
 
-        btn     = self.query_one("#btn-analyze-others", Button)
-        fb      = self.query_one("#suggestion-feedback", Label)
-        table   = self.query_one("#suggestions-table", DataTable)
-        btn.disabled = True
+        fb    = self.query_one("#suggestion-feedback", Label)
+        table = self.query_one("#suggestions-table", DataTable)
         fb.update("Analizando segmentos 'Otros'...")
 
-        categories = db.get_categories()
-        otros = next((c for c in categories if c.name.lower() in ("otro", "otros")), None)
-        segments = db.get_segments_by_category(session_id, otros.id if otros else None)
-
-        if not segments:
-            fb.update("[yellow]No hay segmentos 'Otros' en esta sesión.[/yellow]")
-            btn.disabled = False
-            return
-
         try:
+            categories = db.get_categories()
+            otros = next((c for c in categories if c.name.lower() in ("otro", "otros")), None)
+            segments = db.get_segments_by_category(session_id, otros.id if otros else None)
+
+            if not segments:
+                fb.update("[yellow]No hay segmentos 'Otros' en esta sesión.[/yellow]")
+                return
+
             loop = asyncio.get_running_loop()
             texts = [s.text for s in segments]
             suggestions = await loop.run_in_executor(
@@ -315,9 +312,7 @@ class VideoTab(TabPane):
             else:
                 fb.update("[yellow]No se encontraron patrones recurrentes.[/yellow]")
         except Exception as e:
-            fb.update(f"[red]Error: {e}[/red]")
-        finally:
-            btn.disabled = False
+            fb.update(f"[red]Error al analizar: {e}[/red]")
 
     def _add_suggestion(self, idx: int) -> None:
         if idx >= len(self._suggestions):
