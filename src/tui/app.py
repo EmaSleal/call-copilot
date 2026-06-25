@@ -20,6 +20,7 @@ from textual.binding import Binding
 from textual.containers import Container, Horizontal, ScrollableContainer, Vertical
 from textual.css.query import NoMatches
 from textual.reactive import reactive
+from textual.screen import ModalScreen
 from textual.widgets import (
     Button, DataTable, Footer, Header, Input, Label,
     ProgressBar, RichLog, Static, TabbedContent, TabPane,
@@ -29,6 +30,55 @@ import src.db.database as db
 from src.db.database import init_db
 
 load_dotenv()
+
+
+# ─────────────────────────────────────────────────────────────
+# Modal: detalle de sesión de video
+# ─────────────────────────────────────────────────────────────
+
+class SessionModal(ModalScreen):
+    CSS = """
+    SessionModal { align: center middle; }
+    #modal-dialog {
+        width: 72; height: auto;
+        background: #1e293b; border: solid #4f46e5;
+        padding: 2 3;
+    }
+    #modal-title  { text-style: bold; color: #f8fafc; margin-bottom: 1; }
+    #modal-status { margin-bottom: 0; }
+    #modal-meta   { color: #64748b; margin-bottom: 2; }
+    #modal-actions { height: auto; margin-top: 1; }
+    """
+
+    def __init__(self, title: str, status: str, url: str, date: str, n_segs: int):
+        super().__init__()
+        self._title  = title
+        self._status = status
+        self._url    = url
+        self._date   = date
+        self._n_segs = n_segs
+
+    def compose(self) -> ComposeResult:
+        status_color = {"done": "green", "error": "red", "processing": "yellow"}.get(
+            self._status, "white"
+        )
+        with Vertical(id="modal-dialog"):
+            yield Label(self._title[:65], id="modal-title")
+            yield Label(
+                f"[{status_color}]{self._status}[/{status_color}]  •  "
+                f"{self._n_segs} segmentos  •  {self._date}",
+                id="modal-status",
+            )
+            yield Label(self._url[:65], id="modal-meta")
+            with Horizontal(id="modal-actions"):
+                yield Button("Analizar Otros", id="btn-modal-analyze", variant="warning")
+                yield Button("Cerrar", id="btn-modal-close", variant="default")
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "btn-modal-close":
+            self.dismiss(None)
+        elif event.button.id == "btn-modal-analyze":
+            self.dismiss("analyze")
 
 
 # ─────────────────────────────────────────────────────────────
@@ -130,6 +180,7 @@ class VideoTab(TabPane):
         self._selected_session_id: int | None = None
         self._suggestions: list[dict] = []
         self._selected_suggestion_idx: int | None = None
+        self._sessions_cache: dict[int, tuple] = {}
 
     def compose(self) -> ComposeResult:
         yield Label("URL de YouTube o archivo local:")
@@ -138,9 +189,7 @@ class VideoTab(TabPane):
             yield Button("▶ Procesar", id="btn-process-video", variant="primary")
         yield ProgressBar(id="video-progress", total=100, show_eta=False)
         yield Label("", id="video-status")
-        with Horizontal(id="session-actions"):
-            yield Label("Sesiones procesadas")
-            yield Button("Analizar Otros", id="btn-analyze-others", variant="warning", disabled=True)
+        yield Label("Sesiones procesadas (Enter para ver opciones):", id="lbl-sessions")
         yield DataTable(id="sessions-table")
         yield Label("Sugerencias de categorías:", id="lbl-suggestions")
         yield DataTable(id="suggestions-table")
@@ -162,10 +211,12 @@ class VideoTab(TabPane):
         table.add_columns("Nombre", "Descripción")
 
     def _refresh_sessions(self) -> None:
+        self._sessions_cache = {}
         table = self.query_one("#sessions-table", DataTable)
         table.clear()
         for s in db.get_video_sessions():
             n_segs = len(db.get_segments(s.id)) if s.id else 0
+            self._sessions_cache[s.id] = (s, n_segs)
             table.add_row(
                 str(s.id), s.title[:50], s.status,
                 s.created_at[:16], str(n_segs),
@@ -174,22 +225,28 @@ class VideoTab(TabPane):
 
     def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
         if event.data_table.id == "sessions-table":
-            self._selected_session_id = int(event.row_key.value)
+            session_id = int(event.row_key.value)
+            self._selected_session_id = session_id
             self._selected_suggestion_idx = None
-            self.query_one("#btn-analyze-others", Button).disabled = False
-            self.query_one("#btn-add-suggestion", Button).disabled = True
+            session, n_segs = self._sessions_cache.get(session_id, (None, 0))
+            if session:
+                self.app.push_screen(
+                    SessionModal(session.title, session.status, session.url, session.created_at[:16], n_segs),
+                    self._on_modal_action,
+                )
         elif event.data_table.id == "suggestions-table":
             self._selected_suggestion_idx = event.cursor_row
             self.query_one("#btn-add-suggestion", Button).disabled = False
+
+    def _on_modal_action(self, action: str | None) -> None:
+        if action == "analyze" and self._selected_session_id is not None:
+            asyncio.create_task(self._analyze_others(self._selected_session_id))
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "btn-process-video":
             url = self.query_one("#video-url", Input).value.strip()
             if url:
                 asyncio.create_task(self._process_video(url))
-        elif event.button.id == "btn-analyze-others":
-            if self._selected_session_id is not None:
-                asyncio.create_task(self._analyze_others(self._selected_session_id))
         elif event.button.id == "btn-add-suggestion":
             if self._selected_suggestion_idx is not None and self._suggestions:
                 self._add_suggestion(self._selected_suggestion_idx)
@@ -201,6 +258,7 @@ class VideoTab(TabPane):
         status_lbl   = self.query_one("#video-status",   Label)
         btn          = self.query_one("#btn-process-video", Button)
         btn.disabled = True
+        btn.label = "⏳ Procesando..."
 
         def on_progress(msg: str, pct: float):
             # callback desde el thread del executor — actualizamos via call_from_thread
@@ -218,6 +276,7 @@ class VideoTab(TabPane):
             status_lbl.update(f"[red]Error: {e}[/red]")
         finally:
             btn.disabled = False
+            btn.label = "▶ Procesar"
             self._refresh_sessions()
 
     async def _analyze_others(self, session_id: int) -> None:
@@ -433,8 +492,7 @@ class UnifiedApp(App):
     #cat-form-panel { width: 50%; border-left: solid #334155; padding-left: 2; }
     ProgressBar { margin: 1 0; }
     #video-status { margin-bottom: 1; }
-    #session-actions { height: auto; align: left middle; margin-bottom: 1; }
-    #session-actions Label { color: #94a3b8; margin-right: 2; }
+    #lbl-sessions { margin-bottom: 1; }
     #suggestions-table { height: 8; border: solid #334155; background: #1e293b; }
     #suggestion-feedback { margin-top: 1; }
     #tab-video Horizontal { height: auto; }
