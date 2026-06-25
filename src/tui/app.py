@@ -23,7 +23,7 @@ from textual.reactive import reactive
 from textual.screen import ModalScreen
 from textual.widgets import (
     Button, DataTable, Footer, Header, Input, Label,
-    ProgressBar, RichLog, Static, TabbedContent, TabPane,
+    ProgressBar, RichLog, SelectionList, Static, TabbedContent, TabPane,
 )
 
 import src.db.database as db
@@ -179,7 +179,6 @@ class VideoTab(TabPane):
         super().__init__("🎬 Video", id="tab-video")
         self._selected_session_id: int | None = None
         self._suggestions: list[dict] = []
-        self._selected_suggestion_idx: int | None = None
         self._sessions_cache: dict[int, tuple] = {}
 
     def compose(self) -> ComposeResult:
@@ -192,25 +191,19 @@ class VideoTab(TabPane):
         yield Label("Sesiones procesadas (Enter para ver opciones):", id="lbl-sessions")
         yield DataTable(id="sessions-table")
         yield Label("Sugerencias de categorías:", id="lbl-suggestions")
-        yield DataTable(id="suggestions-table")
+        yield SelectionList(id="suggestions-list")
         with Horizontal():
-            yield Button("Agregar categoría", id="btn-add-suggestion", variant="success", disabled=True)
+            yield Button("Agregar seleccionadas", id="btn-add-suggestion", variant="success", disabled=True)
         yield Label("", id="suggestion-feedback")
 
     def on_mount(self) -> None:
         self._setup_table()
-        self._setup_suggestions_table()
         self._refresh_sessions()
 
     def _setup_table(self) -> None:
         table = self.query_one("#sessions-table", DataTable)
         table.cursor_type = "row"
         table.add_columns("ID", "Título", "Estado", "Fecha", "Segmentos")
-
-    def _setup_suggestions_table(self) -> None:
-        table = self.query_one("#suggestions-table", DataTable)
-        table.cursor_type = "row"
-        table.add_columns("Nombre", "Descripción")
 
     def _refresh_sessions(self) -> None:
         self._sessions_cache = {}
@@ -236,10 +229,6 @@ class VideoTab(TabPane):
                     SessionModal(session.title, session.status, session.url, session.created_at[:16], n_segs),
                     self._on_modal_action,
                 )
-        elif event.data_table.id == "suggestions-table":
-            self._selected_suggestion_idx = event.cursor_row
-            self.query_one("#btn-add-suggestion", Button).disabled = False
-
     def _on_modal_action(self, action: str | None) -> None:
         if action == "analyze" and self._selected_session_id is not None:
             asyncio.create_task(self._analyze_others(self._selected_session_id))
@@ -250,8 +239,7 @@ class VideoTab(TabPane):
             if url:
                 asyncio.create_task(self._process_video(url))
         elif event.button.id == "btn-add-suggestion":
-            if self._selected_suggestion_idx is not None and self._suggestions:
-                self._add_suggestion(self._selected_suggestion_idx)
+            self._add_selected_suggestions()
 
     async def _process_video(self, url: str) -> None:
         from src.video.pipeline import run_pipeline
@@ -284,8 +272,9 @@ class VideoTab(TabPane):
     async def _analyze_others(self, session_id: int) -> None:
         from src.video.classifier import suggest_new_categories
 
-        fb    = self.query_one("#suggestion-feedback", Label)
-        table = self.query_one("#suggestions-table", DataTable)
+        fb      = self.query_one("#suggestion-feedback", Label)
+        sel     = self.query_one("#suggestions-list", SelectionList)
+        btn_add = self.query_one("#btn-add-suggestion", Button)
         fb.update("Analizando segmentos 'Otros'...")
 
         try:
@@ -303,32 +292,40 @@ class VideoTab(TabPane):
                 None, lambda: suggest_new_categories(texts, categories)
             )
             self._suggestions = suggestions
-            table.clear()
-            self._selected_suggestion_idx = None
-            self.query_one("#btn-add-suggestion", Button).disabled = True
+            sel.clear_options()
+            btn_add.disabled = True
             if suggestions:
-                for s in suggestions:
-                    table.add_row(s["name"], s["description"])
-                fb.update(f"[green]{len(suggestions)} sugerencia(s) encontrada(s). Seleccioná una para agregar.[/green]")
+                for i, s in enumerate(suggestions):
+                    sel.add_option((f"{s['name']} — {s['description']}", i))
+                btn_add.disabled = False
+                fb.update(f"[green]{len(suggestions)} sugerencia(s). Marcá las que querés agregar.[/green]")
             else:
                 fb.update("[yellow]No se encontraron patrones recurrentes.[/yellow]")
         except Exception as e:
             fb.update(f"[red]Error al analizar: {e}[/red]")
 
-    def _add_suggestion(self, idx: int) -> None:
-        if idx >= len(self._suggestions):
+    def _add_selected_suggestions(self) -> None:
+        sel = self.query_one("#suggestions-list", SelectionList)
+        fb  = self.query_one("#suggestion-feedback", Label)
+        selected_indices = sel.selected
+        if not selected_indices:
+            fb.update("[yellow]Marcá al menos una sugerencia antes de agregar.[/yellow]")
             return
-        s = self._suggestions[idx]
-        db.create_category(s["name"], s["description"])
-        fb = self.query_one("#suggestion-feedback", Label)
-        fb.update(f"[green]Categoría '{s['name']}' agregada.[/green]")
-        self._suggestions.pop(idx)
-        table = self.query_one("#suggestions-table", DataTable)
-        table.clear()
-        for suggestion in self._suggestions:
-            table.add_row(suggestion["name"], suggestion["description"])
-        self._selected_suggestion_idx = None
-        self.query_one("#btn-add-suggestion", Button).disabled = True
+        added = []
+        for idx in selected_indices:
+            if idx < len(self._suggestions):
+                s = self._suggestions[idx]
+                db.create_category(s["name"], s["description"])
+                added.append(s["name"])
+        remaining = [s for i, s in enumerate(self._suggestions) if i not in set(selected_indices)]
+        self._suggestions = remaining
+        sel.clear_options()
+        for i, s in enumerate(remaining):
+            sel.add_option((f"{s['name']} — {s['description']}", i))
+        if not remaining:
+            self.query_one("#btn-add-suggestion", Button).disabled = True
+        names = ", ".join(f"'{n}'" for n in added)
+        fb.update(f"[green]Agregadas: {names}.[/green]")
 
 
 # ─────────────────────────────────────────────────────────────
@@ -490,7 +487,7 @@ class UnifiedApp(App):
     ProgressBar { margin: 1 0; }
     #video-status { margin-bottom: 1; }
     #lbl-sessions { margin-bottom: 1; }
-    #suggestions-table { height: 8; border: solid #334155; background: #1e293b; }
+    #suggestions-list { height: 8; border: solid #334155; background: #1e293b; }
     #suggestion-feedback { margin-top: 1; }
     #tab-video Horizontal { height: auto; }
     #tab-video Horizontal Input { width: 1fr; }
