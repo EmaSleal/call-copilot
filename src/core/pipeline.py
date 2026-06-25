@@ -151,38 +151,32 @@ class CallCopilotPipeline:
 
     def _content_trigger_delay(self, last_segment_text: str) -> float:
         """
-        Returns a reduced delay when a sentence/clause boundary is detected,
-        or the full inactivity timeout otherwise.
+        Returns a reduced delay only when a QUESTION is detected.
 
-        Uses a debounce approach: never returns 0. Each incoming segment
-        cancels the previous timer, so the reduced delay only expires when
-        the speaker actually pauses — continuous speech always resets the timer
-        before it fires.
+        Declarative sentences (.) don't need immediate copilot input — the
+        speaker is explaining, not asking. Question marks signal the speaker
+        needs help responding, so we reduce the timer from 2s to 0.4s.
+        Everything else uses the full inactivity timeout.
 
-          sentence end (.?!) + >=min words → 0.4s debounce
-          clause end  (,;)   + >=mid words → 0.8s debounce
-          no boundary found               → 2.0s (full silence timer)
+          question (?) + >=min words → 0.4s debounce
+          anything else              → 2.0s (full silence timer)
         """
         context = " ".join(self._segments)
-        words = context.split()
-        word_count = len(words)
+        word_count = len(context.split())
 
+        if word_count < self._min_trigger_words:
+            return self._inactivity_timeout
+
+        # Check last segment for question mark
         last_char = last_segment_text.rstrip()[-1:] if last_segment_text.strip() else ""
-
-        if word_count >= self._min_trigger_words and last_char in _SENTENCE_END:
+        if last_char == "?":
             return 0.4
 
-        if word_count >= self._mid_trigger_words and last_char in _CLAUSE_END:
-            return 0.8
-
-        # Scan full context for last sentence/clause boundary
-        if word_count >= self._min_trigger_words:
-            for i in range(len(words) - 2, self._min_trigger_words - 1, -1):
-                lc = words[i][-1:] if words[i] else ""
-                if lc in _SENTENCE_END:
-                    return 0.4
-                if lc in _CLAUSE_END and word_count >= self._mid_trigger_words:
-                    return 0.8
+        # Scan full context for a question mark past the min-words threshold
+        words = context.split()
+        for i in range(len(words) - 2, self._min_trigger_words - 1, -1):
+            if words[i].endswith("?"):
+                return 0.4
 
         return self._inactivity_timeout
 
