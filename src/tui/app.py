@@ -11,6 +11,7 @@ Tabs:
 
 import asyncio
 import os
+import shutil
 from datetime import datetime
 from pathlib import Path
 
@@ -248,6 +249,9 @@ class VideoTab(TabPane):
             asyncio.create_task(self._analyze_others(sid))
         elif action == "delete":
             db.delete_video_session(sid)
+            session_dir = Path("data/videos") / str(sid)
+            if session_dir.exists():
+                shutil.rmtree(session_dir, ignore_errors=True)
             self._selected_session_id = None
             self._refresh_sessions()
         elif action == "reprocess":
