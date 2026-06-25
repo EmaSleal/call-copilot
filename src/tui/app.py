@@ -209,6 +209,7 @@ class VideoTab(TabPane):
 
     def _setup_suggestions_table(self) -> None:
         table = self.query_one("#suggestions-table", DataTable)
+        table.cursor_type = "row"
         table.add_columns("Nombre", "Descripción")
 
     def _refresh_sessions(self) -> None:
