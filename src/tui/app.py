@@ -17,6 +17,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 from textual.app import App, ComposeResult
 from textual.binding import Binding
+from textual.message import Message
 from textual.containers import Container, Horizontal, ScrollableContainer, Vertical
 from textual.css.query import NoMatches
 from textual.reactive import reactive
@@ -30,6 +31,10 @@ import src.db.database as db
 from src.db.database import init_db
 
 load_dotenv()
+
+
+class CategoriesChanged(Message):
+    """Posted when a category is created or deleted from any tab."""
 
 
 # ─────────────────────────────────────────────────────────────
@@ -71,14 +76,20 @@ class SessionModal(ModalScreen):
             )
             yield Label(self._url[:65], id="modal-meta")
             with Horizontal(id="modal-actions"):
-                yield Button("Analizar Otros", id="btn-modal-analyze", variant="warning")
-                yield Button("Cerrar", id="btn-modal-close", variant="default")
+                yield Button("Analizar Otros",  id="btn-modal-analyze",    variant="warning")
+                yield Button("Reprocesar",       id="btn-modal-reprocess",  variant="primary")
+                yield Button("Eliminar",         id="btn-modal-delete",     variant="error")
+                yield Button("Cerrar",           id="btn-modal-close",      variant="default")
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "btn-modal-close":
             self.dismiss(None)
         elif event.button.id == "btn-modal-analyze":
             self.dismiss("analyze")
+        elif event.button.id == "btn-modal-reprocess":
+            self.dismiss("reprocess")
+        elif event.button.id == "btn-modal-delete":
+            self.dismiss("delete")
 
 
 # ─────────────────────────────────────────────────────────────
@@ -230,8 +241,19 @@ class VideoTab(TabPane):
                     self._on_modal_action,
                 )
     def _on_modal_action(self, action: str | None) -> None:
-        if action == "analyze" and self._selected_session_id is not None:
-            asyncio.create_task(self._analyze_others(self._selected_session_id))
+        sid = self._selected_session_id
+        if sid is None or action is None:
+            return
+        if action == "analyze":
+            asyncio.create_task(self._analyze_others(sid))
+        elif action == "delete":
+            db.delete_video_session(sid)
+            self._selected_session_id = None
+            self._refresh_sessions()
+        elif action == "reprocess":
+            session, _ = self._sessions_cache.get(sid, (None, 0))
+            if session:
+                asyncio.create_task(self._process_video(session.url))
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "btn-process-video":
@@ -326,6 +348,7 @@ class VideoTab(TabPane):
             self.query_one("#btn-add-suggestion", Button).disabled = True
         names = ", ".join(f"'{n}'" for n in added)
         fb.update(f"[green]Agregadas: {names}.[/green]")
+        self.post_message(CategoriesChanged())
 
 
 # ─────────────────────────────────────────────────────────────
@@ -517,6 +540,9 @@ class UnifiedApp(App):
 
     def action_switch_tab(self, tab_id: str) -> None:
         self.query_one(TabbedContent).active = tab_id
+
+    def on_categories_changed(self, event: CategoriesChanged) -> None:
+        self.query_one(CategoriesTab)._refresh()
 
 
 # ─────────────────────────────────────────────────────────────

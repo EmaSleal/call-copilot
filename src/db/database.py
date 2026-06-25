@@ -190,6 +190,12 @@ def create_video_session(title: str, url: str) -> VideoSession:
     return s
 
 
+def delete_video_session(session_id: int) -> None:
+    with _conn() as conn:
+        conn.execute("DELETE FROM segments WHERE session_id=?", (session_id,))
+        conn.execute("DELETE FROM video_sessions WHERE id=?", (session_id,))
+
+
 def update_session_status(session_id: int, status: str,
                            html_report: str = None, error_msg: str = None) -> None:
     with _conn() as conn:
