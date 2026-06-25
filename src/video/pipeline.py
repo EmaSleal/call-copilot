@@ -71,7 +71,8 @@ def run_pipeline(
         model = whisper.load_model(model_size)
         progress("Transcribiendo...", 0.30)
         result = model.transcribe(str(audio_path), verbose=False)
-        segments_raw = result.get("segments", [])
+        segments_raw = _merge_segments(result.get("segments", []))
+        progress(f"Segmentos agrupados: {len(segments_raw)}...", 0.38)
 
         # 6. Obtener categorías de BD una sola vez
         categories: list[Category] = get_categories()
@@ -158,6 +159,51 @@ def _download_video(url: str, out_dir: Path) -> Optional[Path]:
     except Exception as e:
         logger.warning("no se pudo descargar video para keyframes: %s", e)
         return None
+
+
+_SENTENCE_END = frozenset(".?!")
+
+
+def _merge_segments(
+    segments: list[dict],
+    min_words: int = 50,
+    max_words: int = 150,
+) -> list[dict]:
+    """
+    Merges Whisper's short segments into complete-idea segments.
+    Flushes when: word_count >= min_words AND last char is . ? !
+                  OR word_count >= max_words (forced flush).
+    """
+    if not segments:
+        return segments
+
+    merged: list[dict] = []
+    buf: list[dict] = []
+    word_count = 0
+
+    for seg in segments:
+        buf.append(seg)
+        word_count += len(seg["text"].split())
+        last_char = seg["text"].rstrip()[-1:] if seg["text"].strip() else ""
+
+        if (word_count >= min_words and last_char in _SENTENCE_END) or word_count >= max_words:
+            merged.append({
+                "start": buf[0]["start"],
+                "end":   buf[-1]["end"],
+                "text":  " ".join(s["text"].strip() for s in buf),
+            })
+            buf = []
+            word_count = 0
+
+    if buf:
+        merged.append({
+            "start": buf[0]["start"],
+            "end":   buf[-1]["end"],
+            "text":  " ".join(s["text"].strip() for s in buf),
+        })
+
+    logger.info("merged %d raw segments → %d idea segments", len(segments), len(merged))
+    return merged
 
 
 def _extract_keyframe(video_path: Optional[Path], ts: float,
