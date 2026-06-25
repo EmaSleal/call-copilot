@@ -239,6 +239,15 @@ def get_segments(session_id: int) -> list[Segment]:
     return [Segment(**dict(r)) for r in rows]
 
 
+def get_segments_by_category(session_id: int, category_id: Optional[int]) -> list[Segment]:
+    with _conn() as conn:
+        rows = conn.execute(
+            "SELECT * FROM segments WHERE session_id=? AND category_id IS ? ORDER BY start_s",
+            (session_id, category_id)
+        ).fetchall()
+    return [Segment(**dict(r)) for r in rows]
+
+
 def search_segments(query: str, category_id: int = None) -> list[dict]:
     """Búsqueda de texto en segmentos, con join a sesión y categoría."""
     with _conn() as conn:

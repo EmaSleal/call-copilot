@@ -127,6 +127,9 @@ class CallCopilotTab(TabPane):
 class VideoTab(TabPane):
     def __init__(self):
         super().__init__("🎬 Video", id="tab-video")
+        self._selected_session_id: int | None = None
+        self._suggestions: list[dict] = []
+        self._selected_suggestion_idx: int | None = None
 
     def compose(self) -> ComposeResult:
         yield Label("URL de YouTube o archivo local:")
@@ -135,16 +138,28 @@ class VideoTab(TabPane):
             yield Button("▶ Procesar", id="btn-process-video", variant="primary")
         yield ProgressBar(id="video-progress", total=100, show_eta=False)
         yield Label("", id="video-status")
-        yield Label("Sesiones procesadas:", id="lbl-sessions")
+        with Horizontal(id="session-actions"):
+            yield Label("Sesiones procesadas")
+            yield Button("Analizar Otros", id="btn-analyze-others", variant="warning", disabled=True)
         yield DataTable(id="sessions-table")
+        yield Label("Sugerencias de categorías:", id="lbl-suggestions")
+        yield DataTable(id="suggestions-table")
+        with Horizontal():
+            yield Button("Agregar categoría", id="btn-add-suggestion", variant="success", disabled=True)
+        yield Label("", id="suggestion-feedback")
 
     def on_mount(self) -> None:
         self._setup_table()
+        self._setup_suggestions_table()
         self._refresh_sessions()
 
     def _setup_table(self) -> None:
         table = self.query_one("#sessions-table", DataTable)
         table.add_columns("ID", "Título", "Estado", "Fecha", "Segmentos")
+
+    def _setup_suggestions_table(self) -> None:
+        table = self.query_one("#suggestions-table", DataTable)
+        table.add_columns("Nombre", "Descripción")
 
     def _refresh_sessions(self) -> None:
         table = self.query_one("#sessions-table", DataTable)
@@ -157,11 +172,27 @@ class VideoTab(TabPane):
                 key=str(s.id)
             )
 
+    def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
+        if event.data_table.id == "sessions-table":
+            self._selected_session_id = int(event.row_key.value)
+            self._selected_suggestion_idx = None
+            self.query_one("#btn-analyze-others", Button).disabled = False
+            self.query_one("#btn-add-suggestion", Button).disabled = True
+        elif event.data_table.id == "suggestions-table":
+            self._selected_suggestion_idx = event.cursor_row
+            self.query_one("#btn-add-suggestion", Button).disabled = False
+
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "btn-process-video":
             url = self.query_one("#video-url", Input).value.strip()
             if url:
                 asyncio.create_task(self._process_video(url))
+        elif event.button.id == "btn-analyze-others":
+            if self._selected_session_id is not None:
+                asyncio.create_task(self._analyze_others(self._selected_session_id))
+        elif event.button.id == "btn-add-suggestion":
+            if self._selected_suggestion_idx is not None and self._suggestions:
+                self._add_suggestion(self._selected_suggestion_idx)
 
     async def _process_video(self, url: str) -> None:
         from src.video.pipeline import run_pipeline
@@ -188,6 +219,60 @@ class VideoTab(TabPane):
         finally:
             btn.disabled = False
             self._refresh_sessions()
+
+    async def _analyze_others(self, session_id: int) -> None:
+        from src.video.classifier import suggest_new_categories
+
+        btn     = self.query_one("#btn-analyze-others", Button)
+        fb      = self.query_one("#suggestion-feedback", Label)
+        table   = self.query_one("#suggestions-table", DataTable)
+        btn.disabled = True
+        fb.update("Analizando segmentos 'Otros'...")
+
+        categories = db.get_categories()
+        otros = next((c for c in categories if c.name.lower() in ("otro", "otros")), None)
+        segments = db.get_segments_by_category(session_id, otros.id if otros else None)
+
+        if not segments:
+            fb.update("[yellow]No hay segmentos 'Otros' en esta sesión.[/yellow]")
+            btn.disabled = False
+            return
+
+        try:
+            loop = asyncio.get_running_loop()
+            texts = [s.text for s in segments]
+            suggestions = await loop.run_in_executor(
+                None, lambda: suggest_new_categories(texts, categories)
+            )
+            self._suggestions = suggestions
+            table.clear()
+            self._selected_suggestion_idx = None
+            self.query_one("#btn-add-suggestion", Button).disabled = True
+            if suggestions:
+                for s in suggestions:
+                    table.add_row(s["name"], s["description"])
+                fb.update(f"[green]{len(suggestions)} sugerencia(s) encontrada(s). Seleccioná una para agregar.[/green]")
+            else:
+                fb.update("[yellow]No se encontraron patrones recurrentes.[/yellow]")
+        except Exception as e:
+            fb.update(f"[red]Error: {e}[/red]")
+        finally:
+            btn.disabled = False
+
+    def _add_suggestion(self, idx: int) -> None:
+        if idx >= len(self._suggestions):
+            return
+        s = self._suggestions[idx]
+        db.create_category(s["name"], s["description"])
+        fb = self.query_one("#suggestion-feedback", Label)
+        fb.update(f"[green]Categoría '{s['name']}' agregada.[/green]")
+        self._suggestions.pop(idx)
+        table = self.query_one("#suggestions-table", DataTable)
+        table.clear()
+        for suggestion in self._suggestions:
+            table.add_row(suggestion["name"], suggestion["description"])
+        self._selected_suggestion_idx = None
+        self.query_one("#btn-add-suggestion", Button).disabled = True
 
 
 # ─────────────────────────────────────────────────────────────
@@ -348,6 +433,14 @@ class UnifiedApp(App):
     #cat-form-panel { width: 50%; border-left: solid #334155; padding-left: 2; }
     ProgressBar { margin: 1 0; }
     #video-status { margin-bottom: 1; }
+    #session-actions { height: auto; align: left middle; margin-bottom: 1; }
+    #session-actions Label { color: #94a3b8; margin-right: 2; }
+    #suggestions-table { height: 8; border: solid #334155; background: #1e293b; }
+    #suggestion-feedback { margin-top: 1; }
+    #tab-video Horizontal { height: auto; }
+    #tab-video Horizontal Input { width: 1fr; }
+    #tab-search Horizontal { height: auto; }
+    #tab-search Horizontal Input { width: 1fr; }
     """
 
     BINDINGS = [

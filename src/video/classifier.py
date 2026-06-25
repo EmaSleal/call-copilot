@@ -99,6 +99,97 @@ def classify_segments_batch(
     return results
 
 
+_SUGGEST_SYSTEM = """You are a content analyst. Given transcript segments that don't fit existing categories, identify recurring themes and suggest new categories.
+
+Respond ONLY with valid JSON:
+{"suggestions": [{"name": "Category Name", "description": "One sentence description"}, ...]}
+
+Rules:
+- Suggest 2 to 5 categories maximum
+- Only suggest a category if it appears in at least 2 segments
+- Keep names short (1-3 words)
+- No text before or after the JSON"""
+
+
+def suggest_new_categories(
+    texts: list[str],
+    existing_categories: list[Category],
+) -> list[dict]:
+    """
+    Analyzes up to 50 sampled texts from 'Otros' segments and suggests new categories.
+    Returns list of {name, description} dicts, empty list on failure.
+    """
+    if not texts:
+        return []
+
+    # Sample evenly if too many segments
+    if len(texts) > 50:
+        step = len(texts) // 50
+        texts = texts[::step][:50]
+
+    backend = os.getenv("LLM_BACKEND", "ollama")
+    existing_str = "\n".join(
+        f"  - {c.name}: {c.description}" for c in existing_categories
+    )
+    fragments = "\n".join(f'[{i}] "{t[:300]}"' for i, t in enumerate(texts))
+    prompt = (
+        f"Existing categories (do NOT suggest these again):\n{existing_str}\n\n"
+        f"Uncategorized segments:\n{fragments}\n\n"
+        "Suggest new categories that cover recurring themes in these segments."
+    )
+
+    try:
+        raw = _call_suggest_llm(prompt, backend)
+        data = json.loads(raw)
+        suggestions = data.get("suggestions", [])
+        return [s for s in suggestions if s.get("name") and s.get("description")]
+    except Exception as e:
+        logger.error("suggest_new_categories failed: %s", e)
+        return []
+
+
+def _call_suggest_llm(prompt: str, backend: str) -> str:
+    if backend == "claude":
+        client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+        msg = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=512,
+            system=_SUGGEST_SYSTEM,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        return msg.content[0].text
+
+    if backend == "ollama":
+        client = openai.OpenAI(
+            api_key="ollama",
+            base_url=os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1"),
+        )
+        resp = client.chat.completions.create(
+            model=os.getenv("OLLAMA_MODEL", "qwen3:4b"),
+            max_completion_tokens=512,
+            temperature=0.3,
+            messages=[
+                {"role": "system", "content": _SUGGEST_SYSTEM},
+                {"role": "user", "content": "/no_think\n" + prompt},
+            ],
+            extra_body={"options": {"think": False}},
+        )
+        return resp.choices[0].message.content
+
+    client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+    resp = client.chat.completions.create(
+        model="gpt-5.4-nano",
+        max_completion_tokens=512,
+        temperature=0.3,
+        messages=[
+            {"role": "system", "content": _SUGGEST_SYSTEM},
+            {"role": "user", "content": prompt},
+        ],
+        response_format={"type": "json_object"},
+    )
+    return resp.choices[0].message.content
+
+
 def _call_llm(prompt: str, backend: str) -> str:
     if backend == "claude":
         client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))

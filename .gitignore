@@ -8,6 +8,9 @@ example copy.env
 # Whisper generated files
 whisper-text/
 
+# Runtime data (SQLite DB, downloaded videos, reports)
+data/
+
 # Python
 __pycache__/
 *.pyc
