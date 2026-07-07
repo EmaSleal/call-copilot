@@ -172,7 +172,7 @@ def _call_suggest_llm(prompt: str, backend: str) -> str:
                 {"role": "system", "content": _SUGGEST_SYSTEM},
                 {"role": "user", "content": "/no_think\n" + prompt},
             ],
-            extra_body={"options": {"think": False}},
+            extra_body={"options": {"think": False, "num_ctx": 8192}},
         )
         return resp.choices[0].message.content
 
@@ -214,7 +214,7 @@ def _call_llm(prompt: str, backend: str) -> str:
                 {"role": "system", "content": _SYSTEM},
                 {"role": "user", "content": "/no_think\n" + prompt},
             ],
-            extra_body={"options": {"think": False}},
+            extra_body={"options": {"think": False, "num_ctx": 4096}},
         )
         return resp.choices[0].message.content
 

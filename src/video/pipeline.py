@@ -174,12 +174,17 @@ def _merge_segments(
     """
     Merges Whisper segments into complete-idea segments.
 
-    Break priority (first match wins):
-    1. >= min_words AND ends with . ? !  → natural sentence break
-    2. >= mid_words AND ends with , ;    → clause break
-    3. >= max_words                      → forced break, scanning back for
-                                           the last sentence/clause boundary
-                                           before cutting hard
+    Whisper slices by time, so raw segment endings carry no grammatical
+    meaning. This function scans the FULL accumulated text for the last
+    sentence/clause boundary, maps it back to a segment index, and splits
+    there — avoiding mid-idea cuts.
+
+    Break priority:
+    1. >= min_words AND raw segment ends with . ? !  → immediate flush
+    2. >= mid_words                                  → scan full text,
+                                                       split at last boundary
+    3. >= max_words                                  → force split at last
+                                                       boundary, or hard cut
     """
     if not segments:
         return segments
@@ -188,63 +193,82 @@ def _merge_segments(
     buf: list[dict] = []
     word_count = 0
 
-    def flush(b: list[dict]) -> None:
+    def flush_slice(end_idx: int) -> None:
+        nonlocal buf, word_count
+        piece = buf[:end_idx + 1]
         merged.append({
-            "start": b[0]["start"],
-            "end":   b[-1]["end"],
-            "text":  " ".join(s["text"].strip() for s in b),
+            "start": piece[0]["start"],
+            "end":   piece[-1]["end"],
+            "text":  " ".join(s["text"].strip() for s in piece),
         })
+        buf = buf[end_idx + 1:]
+        word_count = sum(len(s["text"].split()) for s in buf)
 
     for seg in segments:
         buf.append(seg)
         word_count += len(seg["text"].split())
         last_char = seg["text"].rstrip()[-1:] if seg["text"].strip() else ""
 
+        # Raw segment happens to end at a sentence boundary
         if word_count >= min_words and last_char in _SENTENCE_END:
-            flush(buf); buf = []; word_count = 0
-        elif word_count >= mid_words and last_char in _CLAUSE_END:
-            flush(buf); buf = []; word_count = 0
-        elif word_count >= max_words:
-            split_at = _find_split(buf, min_words)
-            if split_at is not None:
-                flush(buf[:split_at + 1])
-                buf = buf[split_at + 1:]
-                word_count = sum(len(s["text"].split()) for s in buf)
-            else:
-                flush(buf); buf = []; word_count = 0
+            flush_slice(len(buf) - 1)
+            continue
+
+        # Scan full text for the last boundary past min_words
+        if word_count >= mid_words:
+            full_text = " ".join(s["text"].strip() for s in buf)
+            wi = _last_boundary(full_text, min_words)
+            if wi is not None:
+                si = _word_to_seg_idx(buf, wi)
+                if si < len(buf) - 1:
+                    flush_slice(si)
+                    continue
+
+        # Hard cap: force split at best available boundary
+        if word_count >= max_words:
+            full_text = " ".join(s["text"].strip() for s in buf)
+            wi = _last_boundary(full_text, min_words)
+            si = _word_to_seg_idx(buf, wi) if wi is not None else len(buf) - 1
+            flush_slice(si)
 
     if buf:
-        flush(buf)
+        merged.append({
+            "start": buf[0]["start"],
+            "end":   buf[-1]["end"],
+            "text":  " ".join(s["text"].strip() for s in buf),
+        })
 
     logger.info("merged %d raw segments → %d idea segments", len(segments), len(merged))
     return merged
 
 
-def _find_split(buf: list[dict], min_words: int) -> int | None:
+def _last_boundary(text: str, min_words: int) -> int | None:
     """
-    Scans buf backwards for the best split index: last segment ending with
-    . ? ! (preferred) or , ; (fallback), with at least min_words before it.
+    Returns the word index of the most recent (last) punctuation boundary
+    in `text` that falls after `min_words`. Prefers . ? ! over , ;
     """
-    cum, total = [], 0
-    for s in buf:
-        total += len(s["text"].split())
-        cum.append(total)
-
-    best_sentence: int | None = None
-    best_clause:   int | None = None
-
-    for i in range(len(buf) - 2, -1, -1):
-        if cum[i] < min_words:
+    words = text.split()
+    best_s: int | None = None
+    best_c: int | None = None
+    for i in range(len(words) - 2, min_words - 1, -1):
+        lc = words[i][-1:] if words[i] else ""
+        if lc in _SENTENCE_END and best_s is None:
+            best_s = i
+        if lc in _CLAUSE_END and best_c is None:
+            best_c = i
+        if best_s is not None and best_c is not None:
             break
-        lc = buf[i]["text"].rstrip()[-1:] if buf[i]["text"].strip() else ""
-        if lc in _SENTENCE_END and best_sentence is None:
-            best_sentence = i
-        if lc in _CLAUSE_END and best_clause is None:
-            best_clause = i
-        if best_sentence is not None and best_clause is not None:
-            break
+    return best_s if best_s is not None else best_c
 
-    return best_sentence if best_sentence is not None else best_clause
+
+def _word_to_seg_idx(buf: list[dict], word_idx: int) -> int:
+    """Maps a word index in the concatenated buf text to a buffer segment index."""
+    cum = 0
+    for i, seg in enumerate(buf):
+        cum += len(seg["text"].split())
+        if cum > word_idx:
+            return i
+    return len(buf) - 1
 
 
 def _extract_keyframe(video_path: Optional[Path], ts: float,
