@@ -25,10 +25,6 @@ class SessionLogger:
         ts = datetime.now().strftime("%H:%M:%S")
         self._write(f"[{ts}] {text}\n")
 
-    def log_snapshot(self, context: str) -> None:
-        ts = datetime.now().strftime("%H:%M:%S")
-        self._write(f"[{ts}] SNAPSHOT:\n{context}\n\n")
-
     def log_response(self, context: str, response: str) -> None:
         ts = datetime.now().strftime("%H:%M:%S")
         self._write(

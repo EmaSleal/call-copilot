@@ -25,7 +25,7 @@ class WhisperLocalSTT(STTProvider):
         device: str = "cuda",
         compute_type: str = "float16",
         language: str = "es",
-        buffer_seconds: float = 2.0,
+        buffer_seconds: float = 5.0,
         sample_rate: int = 16000,
     ):
         """
