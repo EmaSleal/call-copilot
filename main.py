@@ -8,9 +8,9 @@ una línea acá, no tocar el resto del código.
 import asyncio
 import logging
 import os
+import sys
 from dotenv import load_dotenv
 from src.core.pipeline import CallCopilotPipeline
-from src.audio.wasapi_source import WASAPILoopbackSource
 from src.audio.vad_silero import SileroVAD
 from src.trigger.heuristic import HeuristicTriggerDetector
 from src.output.console_output import ConsoleOutput
@@ -62,12 +62,20 @@ def build_llm_provider():
 async def main():
     initial_context = input("Contexto de la llamada (Enter para omitir): ").strip()
 
-    audio_source = WASAPILoopbackSource()
+    if sys.platform == "win32":
+        from src.audio.wasapi_source import WASAPILoopbackSource
+        audio_source = WASAPILoopbackSource()
+    else:
+        from src.audio.pulse_source import PulseLoopbackSource
+        audio_source = PulseLoopbackSource()
     vad = SileroVAD(silence_threshold_ms=2000)
     stt = build_stt_provider()
     trigger = HeuristicTriggerDetector(min_words=3)
     llm = build_llm_provider()
     output = ConsoleOutput()
+
+    from openai import AsyncOpenAI
+    openai_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY")) if os.getenv("OPENAI_API_KEY") else None
 
     pipeline = CallCopilotPipeline(
         audio_source=audio_source,
@@ -78,6 +86,7 @@ async def main():
         output=output,
         llm_enabled=os.getenv("LLM_ENABLED", "true").lower() == "true",
         initial_context=initial_context,
+        openai_client=openai_client,
     )
 
     logger.info("pipeline iniciado — Ctrl+C para detener")
