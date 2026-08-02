@@ -108,6 +108,9 @@ Rules:
 - Suggest 2 to 5 categories maximum
 - Only suggest a category if it appears in at least 2 segments
 - Keep names short (1-3 words)
+- Descriptions must be GENERAL: define the topic/theme itself, reusable to classify similar content in a completely different video — NOT a summary of these specific segments. Never mention specific names, products, people, or examples that only appear in this particular analysis.
+  Bad (too specific): "Habla de ajustar el comportamiento del clon mediante reglas, versiones y memoria de Juan."
+  Good (general): "Ajustes y personalización del comportamiento del asistente mediante reglas y contexto."
 - No text before or after the JSON"""
 
 
