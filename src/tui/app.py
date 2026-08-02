@@ -26,8 +26,19 @@ from textual.css.query import NoMatches
 from textual.reactive import reactive
 from textual.screen import ModalScreen
 from textual.widgets import (
-    Button, DataTable, Footer, Header, Input, Label,
-    ProgressBar, RichLog, Select, SelectionList, Static, TabbedContent, TabPane,
+    Button,
+    DataTable,
+    Footer,
+    Header,
+    Input,
+    Label,
+    ProgressBar,
+    RichLog,
+    Select,
+    SelectionList,
+    Static,
+    TabbedContent,
+    TabPane,
 )
 
 import src.db.database as db
@@ -43,7 +54,9 @@ _log_file = os.getenv("CALL_LOG")
 if _log_file:
     _fh = logging.FileHandler(_log_file, mode="a")
     _fh.setLevel(logging.DEBUG)
-    _fh.setFormatter(logging.Formatter("%(asctime)s [%(name)s] %(levelname)s %(message)s"))
+    _fh.setFormatter(
+        logging.Formatter("%(asctime)s [%(name)s] %(levelname)s %(message)s")
+    )
     logging.getLogger().addHandler(_fh)
     logging.getLogger().setLevel(logging.DEBUG)
 
@@ -123,6 +136,7 @@ class CategoriesChanged(Message):
 # Modal: detalle de sesión de video
 # ─────────────────────────────────────────────────────────────
 
+
 class SessionModal(ModalScreen):
     CSS = """
     SessionModal { align: center middle; }
@@ -139,10 +153,10 @@ class SessionModal(ModalScreen):
 
     def __init__(self, title: str, status: str, url: str, date: str, n_segs: int):
         super().__init__()
-        self._title  = title
+        self._title = title
         self._status = status
-        self._url    = url
-        self._date   = date
+        self._url = url
+        self._date = date
         self._n_segs = n_segs
 
     def compose(self) -> ComposeResult:
@@ -158,10 +172,12 @@ class SessionModal(ModalScreen):
             )
             yield Label(self._url[:65], id="modal-meta")
             with Horizontal(id="modal-actions"):
-                yield Button("Analizar Otros",  id="btn-modal-analyze",    variant="warning")
-                yield Button("Reprocesar",       id="btn-modal-reprocess",  variant="primary")
-                yield Button("Eliminar",         id="btn-modal-delete",     variant="error")
-                yield Button("Cerrar",           id="btn-modal-close",      variant="default")
+                yield Button(
+                    "Analizar Otros", id="btn-modal-analyze", variant="warning"
+                )
+                yield Button("Reprocesar", id="btn-modal-reprocess", variant="primary")
+                yield Button("Eliminar", id="btn-modal-delete", variant="error")
+                yield Button("Cerrar", id="btn-modal-close", variant="default")
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "btn-modal-close":
@@ -177,6 +193,7 @@ class SessionModal(ModalScreen):
 # ─────────────────────────────────────────────────────────────
 # Tab 1: Call Copilot
 # ─────────────────────────────────────────────────────────────
+
 
 class CallCopilotTab(TabPane):
     def __init__(self):
@@ -194,7 +211,10 @@ class CallCopilotTab(TabPane):
         yield Label("Título de la sesión (opcional):")
         yield Input(placeholder="Título de la sesión (opcional)", id="session_title")
         yield Label("Contexto de la llamada (opcional):")
-        yield Input(placeholder="Ej: reunión de ventas con cliente enterprise", id="call-context")
+        yield Input(
+            placeholder="Ej: reunión de ventas con cliente enterprise",
+            id="call-context",
+        )
         yield Label("Perfil activo:")
         profile_options = [(p.name, p.id) for p in self._profile_store.list()]
         yield Select(
@@ -202,7 +222,9 @@ class CallCopilotTab(TabPane):
             value=self._active_profile.id,
             id="profile-select",
         )
-        yield Label("Salida de audio a capturar (Linux — qué sale por la corneta/auriculares):")
+        yield Label(
+            "Salida de audio a capturar (Linux — qué sale por la corneta/auriculares):"
+        )
         with Horizontal(id="audio-sink-row"):
             yield Select(
                 options=build_audio_sink_options(),
@@ -212,8 +234,12 @@ class CallCopilotTab(TabPane):
             yield Button("↻", id="btn-refresh-sinks", variant="default")
         with Horizontal(id="call-buttons"):
             yield Button("▶ Iniciar", id="btn-start-call", variant="success")
-            yield Button("⏹ Detener", id="btn-stop-call", variant="error", disabled=True)
-            yield Button("Gestionar perfiles", id="btn-manage-profiles", variant="default")
+            yield Button(
+                "⏹ Detener", id="btn-stop-call", variant="error", disabled=True
+            )
+            yield Button(
+                "Gestionar perfiles", id="btn-manage-profiles", variant="default"
+            )
             yield Button("⚙ Configuración", id="btn-settings", variant="default")
         yield Label("Transcripción en vivo:", id="lbl-transcript")
         yield RichLog(id="transcript-log", highlight=True, markup=True, wrap=True)
@@ -236,11 +262,15 @@ class CallCopilotTab(TabPane):
         elif event.button.id == "btn-stop-call":
             self._stop_call()
         elif event.button.id == "btn-manage-profiles":
-            self.app.push_screen(ProfileManagerScreen(self._profile_store), self._on_profiles_managed)
+            self.app.push_screen(
+                ProfileManagerScreen(self._profile_store), self._on_profiles_managed
+            )
         elif event.button.id == "btn-settings":
             self.app.push_screen(SettingsScreen(), self._on_profiles_managed)
         elif event.button.id == "btn-refresh-sinks":
-            self.query_one("#audio-sink-select", Select).set_options(build_audio_sink_options())
+            self.query_one("#audio-sink-select", Select).set_options(
+                build_audio_sink_options()
+            )
 
     def _on_profiles_managed(self, _result) -> None:
         """Called when ProfileManagerScreen dismisses; refresh the Select options."""
@@ -261,7 +291,9 @@ class CallCopilotTab(TabPane):
         self.query_one("#btn-stop-call").disabled = False
         self.query_one("#transcript-log", RichLog).clear()
         self.query_one("#suggestion-log", RichLog).clear()
-        self._pipeline_task = asyncio.create_task(self._run_pipeline(context, title=title))
+        self._pipeline_task = asyncio.create_task(
+            self._run_pipeline(context, title=title)
+        )
 
     def _stop_call(self) -> None:
         pipeline = self._pipeline
@@ -285,8 +317,8 @@ class CallCopilotTab(TabPane):
         from src.trigger.heuristic import HeuristicTriggerDetector
         from src.core.interfaces import LLMResponse, TranscriptSegment
 
-        transcript_log  = self.query_one("#transcript-log",  RichLog)
-        suggestion_log  = self.query_one("#suggestion-log",  RichLog)
+        transcript_log = self.query_one("#transcript-log", RichLog)
+        suggestion_log = self.query_one("#suggestion-log", RichLog)
         suggestion_live = self.query_one("#suggestion-live", Static)
 
         class TUIOutput:
@@ -330,18 +362,26 @@ class CallCopilotTab(TabPane):
         output = TUIOutput()
 
         from openai import AsyncOpenAI
-        openai_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY")) if os.getenv("OPENAI_API_KEY") else None
+
+        openai_client = (
+            AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+            if os.getenv("OPENAI_API_KEY")
+            else None
+        )
 
         if sys.platform == "win32":
             from src.audio.wasapi_source import WASAPILoopbackSource
+
             _audio_source = WASAPILoopbackSource()
         else:
             from src.audio.pulse_source import PulseLoopbackSource
+
             _audio_source = PulseLoopbackSource(device=self._audio_device or None)
 
         vad = _silero_vad_instance
         if vad is None:
             from src.audio.vad_silero import SileroVAD
+
             vad = SileroVAD(silence_threshold_ms=2000)
 
         # Snapshot the active profile at call start — no live reload during the call.
@@ -374,6 +414,7 @@ class CallCopilotTab(TabPane):
 # ─────────────────────────────────────────────────────────────
 # Tab 2: Video Transcriber
 # ─────────────────────────────────────────────────────────────
+
 
 async def _reclassify_otros(session_id: int) -> int:
     """
@@ -426,7 +467,12 @@ class VideoTab(TabPane):
         yield Label("Sugerencias de categorías:", id="lbl-suggestions")
         yield SelectionList(id="suggestions-list")
         with Horizontal():
-            yield Button("Agregar seleccionadas", id="btn-add-suggestion", variant="success", disabled=True)
+            yield Button(
+                "Agregar seleccionadas",
+                id="btn-add-suggestion",
+                variant="success",
+                disabled=True,
+            )
         yield Label("", id="suggestion-feedback")
 
     def on_mount(self) -> None:
@@ -446,9 +492,12 @@ class VideoTab(TabPane):
             n_segs = len(db.get_segments(s.id)) if s.id else 0
             self._sessions_cache[s.id] = (s, n_segs)
             table.add_row(
-                str(s.id), s.title[:50], s.status,
-                s.created_at[:16], str(n_segs),
-                key=str(s.id)
+                str(s.id),
+                s.title[:50],
+                s.status,
+                s.created_at[:16],
+                str(n_segs),
+                key=str(s.id),
             )
 
     def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
@@ -459,9 +508,16 @@ class VideoTab(TabPane):
             session, n_segs = self._sessions_cache.get(session_id, (None, 0))
             if session:
                 self.app.push_screen(
-                    SessionModal(session.title, session.status, session.url, session.created_at[:16], n_segs),
+                    SessionModal(
+                        session.title,
+                        session.status,
+                        session.url,
+                        session.created_at[:16],
+                        n_segs,
+                    ),
                     self._on_modal_action,
                 )
+
     def _on_modal_action(self, action: str | None) -> None:
         sid = self._selected_session_id
         if sid is None or action is None:
@@ -492,8 +548,8 @@ class VideoTab(TabPane):
         from src.video.pipeline import run_pipeline
 
         progress_bar = self.query_one("#video-progress", ProgressBar)
-        status_lbl   = self.query_one("#video-status",   Label)
-        btn          = self.query_one("#btn-process-video", Button)
+        status_lbl = self.query_one("#video-status", Label)
+        btn = self.query_one("#btn-process-video", Button)
         btn.disabled = True
         btn.label = "⏳ Procesando..."
 
@@ -519,15 +575,17 @@ class VideoTab(TabPane):
     async def _analyze_others(self, session_id: int) -> None:
         from src.video.classifier import suggest_new_categories
 
-        fb      = self.query_one("#suggestion-feedback", Label)
-        sel     = self.query_one("#suggestions-list", SelectionList)
+        fb = self.query_one("#suggestion-feedback", Label)
+        sel = self.query_one("#suggestions-list", SelectionList)
         btn_add = self.query_one("#btn-add-suggestion", Button)
         fb.update("Analizando segmentos 'Otros'...")
 
         try:
             categories = db.get_categories()
             otros = _find_otro_category(categories)
-            segments = db.get_segments_by_category(session_id, otros.id if otros else None)
+            segments = db.get_segments_by_category(
+                session_id, otros.id if otros else None
+            )
 
             if not segments:
                 fb.update("[yellow]No hay segmentos 'Otros' en esta sesión.[/yellow]")
@@ -545,7 +603,9 @@ class VideoTab(TabPane):
                 for i, s in enumerate(suggestions):
                     sel.add_option((f"{s['name']} — {s['description']}", i))
                 btn_add.disabled = False
-                fb.update(f"[green]{len(suggestions)} sugerencia(s). Marcá las que querés agregar.[/green]")
+                fb.update(
+                    f"[green]{len(suggestions)} sugerencia(s). Marcá las que querés agregar.[/green]"
+                )
             else:
                 fb.update("[yellow]No se encontraron patrones recurrentes.[/yellow]")
         except Exception as e:
@@ -553,20 +613,26 @@ class VideoTab(TabPane):
 
     async def _add_selected_suggestions(self) -> None:
         sel = self.query_one("#suggestions-list", SelectionList)
-        fb  = self.query_one("#suggestion-feedback", Label)
+        fb = self.query_one("#suggestion-feedback", Label)
         selected_indices = sel.selected
         if not selected_indices:
-            fb.update("[yellow]Marcá al menos una sugerencia antes de agregar.[/yellow]")
+            fb.update(
+                "[yellow]Marcá al menos una sugerencia antes de agregar.[/yellow]"
+            )
             return
 
         existing_names = {c.name for c in db.get_categories()}
-        selected = [self._suggestions[i] for i in selected_indices if i < len(self._suggestions)]
+        selected = [
+            self._suggestions[i] for i in selected_indices if i < len(self._suggestions)
+        ]
         new_ones, duplicates = _partition_new_suggestions(selected, existing_names)
 
         for s in new_ones:
             db.create_category(s["name"], s["description"])
 
-        remaining = [s for i, s in enumerate(self._suggestions) if i not in set(selected_indices)]
+        remaining = [
+            s for i, s in enumerate(self._suggestions) if i not in set(selected_indices)
+        ]
         self._suggestions = remaining
         sel.clear_options()
         for i, s in enumerate(remaining):
@@ -578,7 +644,9 @@ class VideoTab(TabPane):
         if new_ones:
             parts.append(f"Agregadas: {', '.join(s['name'] for s in new_ones)}.")
         if duplicates:
-            parts.append(f"Ya existían (omitidas): {', '.join(s['name'] for s in duplicates)}.")
+            parts.append(
+                f"Ya existían (omitidas): {', '.join(s['name'] for s in duplicates)}."
+            )
         self.post_message(CategoriesChanged())
 
         session_id = self._selected_session_id
@@ -588,12 +656,15 @@ class VideoTab(TabPane):
 
         fb.update(f"[green]{' '.join(parts)}[/green] Reclasificando 'Otros'...")
         moved = await _reclassify_otros(session_id)
-        fb.update(f"[green]{' '.join(parts)} {moved} segmento(s) reclasificado(s) desde 'Otro'.[/green]")
+        fb.update(
+            f"[green]{' '.join(parts)} {moved} segmento(s) reclasificado(s) desde 'Otro'.[/green]"
+        )
 
 
 # ─────────────────────────────────────────────────────────────
 # Tab 3: Búsqueda
 # ─────────────────────────────────────────────────────────────
+
 
 class SearchTab(TabPane):
     def __init__(self):
@@ -624,16 +695,17 @@ class SearchTab(TabPane):
         table.clear()
         results = db.search_segments(query)
         for r in results:
-            start  = _fmt_ts(r["start_s"])
-            cat    = r.get("cat_name") or "—"
-            text   = r["text"][:80] + ("…" if len(r["text"]) > 80 else "")
-            title  = (r.get("session_title") or "")[:30]
+            start = _fmt_ts(r["start_s"])
+            cat = r.get("cat_name") or "—"
+            text = r["text"][:80] + ("…" if len(r["text"]) > 80 else "")
+            title = (r.get("session_title") or "")[:30]
             table.add_row(title, start, cat, text)
 
 
 # ─────────────────────────────────────────────────────────────
 # Tab 4: Categorías (CRUD)
 # ─────────────────────────────────────────────────────────────
+
 
 class CategoriesTab(TabPane):
     def __init__(self):
@@ -646,9 +718,13 @@ class CategoriesTab(TabPane):
                 yield Label("Categorías existentes")
                 yield DataTable(id="cat-table")
                 with Horizontal():
-                    yield Button("+ Nueva", id="btn-new-cat",    variant="success")
-                    yield Button("Editar",  id="btn-edit-cat",   variant="default", disabled=True)
-                    yield Button("Borrar",  id="btn-delete-cat", variant="error",   disabled=True)
+                    yield Button("+ Nueva", id="btn-new-cat", variant="success")
+                    yield Button(
+                        "Editar", id="btn-edit-cat", variant="default", disabled=True
+                    )
+                    yield Button(
+                        "Borrar", id="btn-delete-cat", variant="error", disabled=True
+                    )
             with Vertical(id="cat-form-panel"):
                 yield Label("Nombre:")
                 yield Input(id="cat-name", placeholder="Ej: Marketing")
@@ -676,7 +752,7 @@ class CategoriesTab(TabPane):
         self._toggle_edit_buttons(False)
 
     def _toggle_edit_buttons(self, enabled: bool) -> None:
-        self.query_one("#btn-edit-cat",   Button).disabled = not enabled
+        self.query_one("#btn-edit-cat", Button).disabled = not enabled
         self.query_one("#btn-delete-cat", Button).disabled = not enabled
 
     def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
@@ -691,25 +767,27 @@ class CategoriesTab(TabPane):
             self._selected_id = None
         elif bid == "btn-edit-cat" and self._selected_id:
             cats = {c.id: c for c in db.get_categories()}
-            cat  = cats.get(self._selected_id)
+            cat = cats.get(self._selected_id)
             if cat:
-                self.query_one("#cat-name",  Input).value = cat.name
-                self.query_one("#cat-desc",  Input).value = cat.description
+                self.query_one("#cat-name", Input).value = cat.name
+                self.query_one("#cat-desc", Input).value = cat.description
                 self.query_one("#cat-color", Input).value = cat.color
         elif bid == "btn-delete-cat" and self._selected_id:
             db.delete_category(self._selected_id)
             self._refresh()
-            self.query_one("#cat-feedback", Label).update("[green]Categoría eliminada.[/green]")
+            self.query_one("#cat-feedback", Label).update(
+                "[green]Categoría eliminada.[/green]"
+            )
         elif bid == "btn-save-cat":
             self._save()
         elif bid == "btn-cancel-cat":
             self._clear_form()
 
     def _save(self) -> None:
-        name  = self.query_one("#cat-name",  Input).value.strip()
-        desc  = self.query_one("#cat-desc",  Input).value.strip()
+        name = self.query_one("#cat-name", Input).value.strip()
+        desc = self.query_one("#cat-desc", Input).value.strip()
         color = self.query_one("#cat-color", Input).value.strip() or "#6366f1"
-        fb    = self.query_one("#cat-feedback", Label)
+        fb = self.query_one("#cat-feedback", Label)
         if not name:
             fb.update("[red]El nombre no puede estar vacío.[/red]")
             return
@@ -723,14 +801,15 @@ class CategoriesTab(TabPane):
         self._clear_form()
 
     def _clear_form(self) -> None:
-        self.query_one("#cat-name",  Input).value = ""
-        self.query_one("#cat-desc",  Input).value = ""
+        self.query_one("#cat-name", Input).value = ""
+        self.query_one("#cat-desc", Input).value = ""
         self.query_one("#cat-color", Input).value = "#6366f1"
 
 
 # ─────────────────────────────────────────────────────────────
 # Tab 5: Historial — browse past call sessions and their ideas
 # ─────────────────────────────────────────────────────────────
+
 
 class HistorialTab(TabPane):
     """
@@ -786,7 +865,10 @@ class HistorialTab(TabPane):
             source_label = "Video" if s.source == "video" else "Llamada"
             date_display = (s.created_at or "")[:16]
             table.add_row(
-                str(s.id), source_label, s.title, date_display,
+                str(s.id),
+                source_label,
+                s.title,
+                date_display,
                 key=f"{s.source}:{s.id}",
             )
 
@@ -802,7 +884,11 @@ class HistorialTab(TabPane):
         self.query_one("#historial-status", Label).update("")
         for i, frag in enumerate(fragments, start=1):
             excerpt = frag.text[:60] + ("…" if len(frag.text) > 60 else "")
-            cat_label = self._categories_cache.get(frag.category_id, "—") if frag.category_id else "—"
+            cat_label = (
+                self._categories_cache.get(frag.category_id, "—")
+                if frag.category_id
+                else "—"
+            )
             ideas_table.add_row(str(i), excerpt, cat_label)
 
     def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
@@ -818,6 +904,7 @@ class HistorialTab(TabPane):
 # NOTE: ProfileManagerScreen is a ModalScreen, NOT a new TabPane.
 # It is launched from the Call tab via push_screen() and dismissed on close.
 # ─────────────────────────────────────────────────────────────
+
 
 def build_model_select_options(active_backend: str) -> list[tuple[str, str]]:
     """
@@ -884,17 +971,23 @@ class ProfileManagerScreen(ModalScreen):
                     yield Label("Perfiles existentes")
                     yield DataTable(id="pm-table")
                     with Horizontal():
-                        yield Button("+ Nuevo",  id="btn-pm-new",    variant="success")
-                        yield Button("Editar",   id="btn-pm-edit",   variant="default", disabled=True)
-                        yield Button("Borrar",   id="btn-pm-delete", variant="error",   disabled=True)
+                        yield Button("+ Nuevo", id="btn-pm-new", variant="success")
+                        yield Button(
+                            "Editar", id="btn-pm-edit", variant="default", disabled=True
+                        )
+                        yield Button(
+                            "Borrar", id="btn-pm-delete", variant="error", disabled=True
+                        )
                     yield Label("", id="pm-feedback")
                 with Vertical(id="pm-form-panel"):
                     yield Label("Nombre:")
-                    yield Input(id="pm-name",   placeholder="Ej: Negociación")
+                    yield Input(id="pm-name", placeholder="Ej: Negociación")
                     yield Label("Descripción:")
-                    yield Input(id="pm-desc",   placeholder="Descripción breve")
+                    yield Input(id="pm-desc", placeholder="Descripción breve")
                     yield Label("Addon de sistema (opcional):")
-                    yield Input(id="pm-addon",  placeholder="Instrucción extra para el LLM")
+                    yield Input(
+                        id="pm-addon", placeholder="Instrucción extra para el LLM"
+                    )
                     yield Label("Modo de respuesta:")
                     yield Select(
                         [(mode.value, mode.value) for mode in ResponseMode],
@@ -907,7 +1000,11 @@ class ProfileManagerScreen(ModalScreen):
                         id="pm-model",
                         value="",
                     )
-                    yield Button("↻ Actualizar modelos", id="btn-pm-refresh-models", variant="default")
+                    yield Button(
+                        "↻ Actualizar modelos",
+                        id="btn-pm-refresh-models",
+                        variant="default",
+                    )
                     yield Button("Guardar", id="btn-pm-save", variant="primary")
 
     def on_mount(self) -> None:
@@ -920,13 +1017,17 @@ class ProfileManagerScreen(ModalScreen):
         table = self.query_one("#pm-table", DataTable)
         table.clear()
         for p in self._store.list():
-            addon_preview = (p.system_prompt_addon[:25] + "…") if len(p.system_prompt_addon) > 25 else p.system_prompt_addon
+            addon_preview = (
+                (p.system_prompt_addon[:25] + "…")
+                if len(p.system_prompt_addon) > 25
+                else p.system_prompt_addon
+            )
             table.add_row(p.id, p.name, addon_preview, key=p.id)
         self._selected_id = None
         self._toggle_edit_buttons(False)
 
     def _toggle_edit_buttons(self, enabled: bool) -> None:
-        self.query_one("#btn-pm-edit",   Button).disabled = not enabled
+        self.query_one("#btn-pm-edit", Button).disabled = not enabled
         self.query_one("#btn-pm-delete", Button).disabled = not enabled
 
     def on_data_table_row_highlighted(self, event: DataTable.RowHighlighted) -> None:
@@ -947,10 +1048,12 @@ class ProfileManagerScreen(ModalScreen):
         elif bid == "btn-pm-edit" and self._selected_id:
             profile = self._store.get(self._selected_id)
             if profile:
-                self.query_one("#pm-name",  Input).value = profile.name
-                self.query_one("#pm-desc",  Input).value = profile.description
+                self.query_one("#pm-name", Input).value = profile.name
+                self.query_one("#pm-desc", Input).value = profile.description
                 self.query_one("#pm-addon", Input).value = profile.system_prompt_addon
-                self.query_one("#pm-response-mode", Select).value = profile.response_mode.value
+                self.query_one(
+                    "#pm-response-mode", Select
+                ).value = profile.response_mode.value
                 self.query_one("#pm-model", Select).value = profile.model
         elif bid == "btn-pm-delete" and self._selected_id:
             self._delete_selected()
@@ -987,10 +1090,11 @@ class ProfileManagerScreen(ModalScreen):
     def _save(self) -> None:
         from src.profiles.models import ProfileHeuristics, CallProfile as _CP
         import uuid
-        name  = self.query_one("#pm-name",  Input).value.strip()
-        desc  = self.query_one("#pm-desc",  Input).value.strip()
+
+        name = self.query_one("#pm-name", Input).value.strip()
+        desc = self.query_one("#pm-desc", Input).value.strip()
         addon = self.query_one("#pm-addon", Input).value.strip()
-        fb    = self.query_one("#pm-feedback", Label)
+        fb = self.query_one("#pm-feedback", Label)
         raw_mode = self.query_one("#pm-response-mode", Select).value
         try:
             response_mode = ResponseMode(str(raw_mode))
@@ -1035,8 +1139,8 @@ class ProfileManagerScreen(ModalScreen):
         self._clear_form()
 
     def _clear_form(self) -> None:
-        self.query_one("#pm-name",  Input).value = ""
-        self.query_one("#pm-desc",  Input).value = ""
+        self.query_one("#pm-name", Input).value = ""
+        self.query_one("#pm-desc", Input).value = ""
         self.query_one("#pm-addon", Input).value = ""
         self.query_one("#pm-response-mode", Select).value = "copilot"
         self.query_one("#pm-model", Select).value = ""
@@ -1157,7 +1261,9 @@ class SettingsScreen(ModalScreen):
                 yield Label("Configuración", id="settings-title")
                 yield Button("✕ Cerrar", id="btn-settings-close", variant="default")
             with Vertical(id="settings-body"):
-                yield Label("Proveedor LLM (tiempo real) — aplica en la próxima llamada:")
+                yield Label(
+                    "Proveedor LLM (tiempo real) — aplica en la próxima llamada:"
+                )
                 yield Select(
                     [("gpt", "gpt"), ("claude", "claude"), ("ollama", "ollama")],
                     id="settings-llm-backend",
@@ -1171,17 +1277,20 @@ class SettingsScreen(ModalScreen):
                 )
                 yield Label("OpenAI API Key:")
                 yield Input(
-                    id="settings-openai-key", password=True,
+                    id="settings-openai-key",
+                    password=True,
                     placeholder=self._key_placeholder("OPENAI_API_KEY"),
                 )
                 yield Label("Anthropic API Key:")
                 yield Input(
-                    id="settings-anthropic-key", password=True,
+                    id="settings-anthropic-key",
+                    password=True,
                     placeholder=self._key_placeholder("ANTHROPIC_API_KEY"),
                 )
                 yield Label("Deepgram API Key:")
                 yield Input(
-                    id="settings-deepgram-key", password=True,
+                    id="settings-deepgram-key",
+                    password=True,
                     placeholder=self._key_placeholder("DEEPGRAM_API_KEY"),
                 )
                 yield Label("Whisper — modelo para llamadas — requiere reiniciar:")
@@ -1220,8 +1329,12 @@ class SettingsScreen(ModalScreen):
         new_values = {
             "LLM_BACKEND": str(self.query_one("#settings-llm-backend", Select).value),
             "STT_BACKEND": str(self.query_one("#settings-stt-backend", Select).value),
-            "WHISPER_MODEL_CALL": str(self.query_one("#settings-whisper-call", Select).value),
-            "WHISPER_MODEL_VIDEO": str(self.query_one("#settings-whisper-video", Select).value),
+            "WHISPER_MODEL_CALL": str(
+                self.query_one("#settings-whisper-call", Select).value
+            ),
+            "WHISPER_MODEL_VIDEO": str(
+                self.query_one("#settings-whisper-video", Select).value
+            ),
         }
         errors = validate_settings_form(new_values)
         if errors:
@@ -1248,6 +1361,7 @@ class SettingsScreen(ModalScreen):
             return
 
         from src.llm import model_catalog
+
         for key in changed:
             provider = key_to_provider(key)
             if provider:
@@ -1265,10 +1379,10 @@ class SettingsScreen(ModalScreen):
         fb.update(f"[green]Guardado.[/green] {summary}")
 
 
-
 # ─────────────────────────────────────────────────────────────
 # App principal
 # ─────────────────────────────────────────────────────────────
+
 
 class UnifiedApp(App):
     CSS = """
@@ -1301,12 +1415,12 @@ class UnifiedApp(App):
 
     BINDINGS = [
         Binding("ctrl+q", "quit", "Salir"),
-        Binding("1", "switch_tab('tab-call')",        "Call Copilot"),
-        Binding("2", "switch_tab('tab-video')",       "Video"),
-        Binding("3", "switch_tab('tab-search')",      "Buscar"),
-        Binding("4", "switch_tab('tab-categories')",  "Categorías"),
-        Binding("5", "switch_tab('tab-historial')",   "Historial"),
-        Binding("ctrl+s", "open_settings",             "Configuración"),
+        Binding("1", "switch_tab('tab-call')", "Call Copilot"),
+        Binding("2", "switch_tab('tab-video')", "Video"),
+        Binding("3", "switch_tab('tab-search')", "Buscar"),
+        Binding("4", "switch_tab('tab-categories')", "Categorías"),
+        Binding("5", "switch_tab('tab-historial')", "Historial"),
+        Binding("ctrl+s", "open_settings", "Configuración"),
     ]
 
     TITLE = "Unified Copilot"
@@ -1337,6 +1451,7 @@ class UnifiedApp(App):
 # Helpers compartidos
 # ─────────────────────────────────────────────────────────────
 
+
 def _fmt_ts(seconds: float) -> str:
     m = int(seconds // 60)
     s = int(seconds % 60)
@@ -1347,10 +1462,12 @@ def _build_stt():
     backend = config_defaults.stt_backend()
     if backend == "deepgram":
         from src.stt.deepgram_provider import DeepgramSTT
+
         return DeepgramSTT(api_key=os.getenv("DEEPGRAM_API_KEY"), language="es")
     if _whisper_stt_instance is not None:
         return _whisper_stt_instance
     from src.stt.whisper_local_provider import WhisperLocalSTT
+
     model_size = config_defaults.whisper_model_call()
     return WhisperLocalSTT(model_size=model_size, device="cuda", language="es")
 
@@ -1359,14 +1476,16 @@ def _build_llm():
     backend = config_defaults.llm_backend()
     if backend == "gpt":
         from src.llm.openai_provider import OpenAIProvider
+
         return OpenAIProvider(
             api_key=os.getenv("OPENAI_API_KEY"),
-            token_threshold=int(os.getenv("LLM_TOKEN_THRESHOLD", "500"))
+            token_threshold=int(os.getenv("LLM_TOKEN_THRESHOLD", "500")),
         )
     # "gpt" is now the canonical realtime default (config_defaults.DEFAULT_LLM_BACKEND);
     # "claude" only applies when explicitly configured. "ollama" is not supported
     # for the copilot LLM (Ollama is used in the video classifier, not real-time streaming).
     from src.llm.claude_provider import ClaudeProvider
+
     return ClaudeProvider(api_key=os.getenv("ANTHROPIC_API_KEY"))
 
 
@@ -1390,13 +1509,17 @@ def _preload_models() -> None:
     backend = config_defaults.stt_backend()
     if backend == "whisper_local":
         from src.stt.whisper_local_provider import WhisperLocalSTT
+
         model_size = config_defaults.whisper_model_call()
         print(f"Loading Whisper model '{model_size}'...")
-        _whisper_stt_instance = WhisperLocalSTT(model_size=model_size, device="cuda", language="es")
+        _whisper_stt_instance = WhisperLocalSTT(
+            model_size=model_size, device="cuda", language="es"
+        )
         print("Whisper ready.")
 
     print("Loading Silero VAD...")
     from src.audio.vad_silero import SileroVAD
+
     _silero_vad_instance = SileroVAD(silence_threshold_ms=2000)
     print("VAD ready.")
 
