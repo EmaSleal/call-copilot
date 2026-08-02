@@ -74,6 +74,29 @@ def _parse_session_row_key(key: str) -> tuple[str, int]:
     return source, int(session_id)
 
 
+def _find_otro_category(categories: list):
+    """Locate the fallback 'Otro'/'Otros' category by name, case-insensitive.
+
+    Pure function — no side effects, easy to test without Textual.
+    """
+    return next((c for c in categories if c.name.lower() in ("otro", "otros")), None)
+
+
+def _partition_new_suggestions(
+    suggestions: list[dict], existing_names: set[str]
+) -> tuple[list[dict], list[dict]]:
+    """Split suggestions into (new_ones, duplicates) by exact category name match.
+
+    Pure function — no side effects, easy to test without Textual. Needed
+    because create_category() raises on a UNIQUE name collision, and the LLM
+    suggester can re-suggest a category that was already added earlier.
+    """
+    new_ones, duplicates = [], []
+    for s in suggestions:
+        (duplicates if s["name"] in existing_names else new_ones).append(s)
+    return new_ones, duplicates
+
+
 class CategoriesChanged(Message):
     """Posted when a category is created or deleted from any tab."""
 
@@ -317,6 +340,38 @@ class CallCopilotTab(TabPane):
 # Tab 2: Video Transcriber
 # ─────────────────────────────────────────────────────────────
 
+async def _reclassify_otros(session_id: int) -> int:
+    """
+    Re-check current 'Otro' segments of a session against the full, up-to-date
+    category set (including categories just added) — without reprocessing the
+    whole video. Returns the number of segments moved.
+    """
+    from src.video.classifier import classify_segments_batch
+
+    categories = db.get_categories()
+    otros = _find_otro_category(categories)
+    if otros is None:
+        return 0
+
+    segments = db.get_segments_by_category(session_id, otros.id)
+    if not segments:
+        return 0
+
+    candidates = [c for c in categories if c.id != otros.id]
+    texts = [s.text for s in segments]
+    loop = asyncio.get_running_loop()
+    cat_ids = await loop.run_in_executor(
+        None, lambda: classify_segments_batch(texts, candidates)
+    )
+
+    moved = 0
+    for seg, cat_id in zip(segments, cat_ids):
+        if cat_id is not None:
+            db.update_segment_category(seg.id, cat_id)
+            moved += 1
+    return moved
+
+
 class VideoTab(TabPane):
     def __init__(self):
         super().__init__("🎬 Video", id="tab-video")
@@ -396,7 +451,7 @@ class VideoTab(TabPane):
             if url:
                 asyncio.create_task(self._process_video(url))
         elif event.button.id == "btn-add-suggestion":
-            self._add_selected_suggestions()
+            asyncio.create_task(self._add_selected_suggestions())
 
     async def _process_video(self, url: str) -> None:
         from src.video.pipeline import run_pipeline
@@ -436,7 +491,7 @@ class VideoTab(TabPane):
 
         try:
             categories = db.get_categories()
-            otros = next((c for c in categories if c.name.lower() in ("otro", "otros")), None)
+            otros = _find_otro_category(categories)
             segments = db.get_segments_by_category(session_id, otros.id if otros else None)
 
             if not segments:
@@ -461,19 +516,21 @@ class VideoTab(TabPane):
         except Exception as e:
             fb.update(f"[red]Error al analizar: {e}[/red]")
 
-    def _add_selected_suggestions(self) -> None:
+    async def _add_selected_suggestions(self) -> None:
         sel = self.query_one("#suggestions-list", SelectionList)
         fb  = self.query_one("#suggestion-feedback", Label)
         selected_indices = sel.selected
         if not selected_indices:
             fb.update("[yellow]Marcá al menos una sugerencia antes de agregar.[/yellow]")
             return
-        added = []
-        for idx in selected_indices:
-            if idx < len(self._suggestions):
-                s = self._suggestions[idx]
-                db.create_category(s["name"], s["description"])
-                added.append(s["name"])
+
+        existing_names = {c.name for c in db.get_categories()}
+        selected = [self._suggestions[i] for i in selected_indices if i < len(self._suggestions)]
+        new_ones, duplicates = _partition_new_suggestions(selected, existing_names)
+
+        for s in new_ones:
+            db.create_category(s["name"], s["description"])
+
         remaining = [s for i, s in enumerate(self._suggestions) if i not in set(selected_indices)]
         self._suggestions = remaining
         sel.clear_options()
@@ -481,9 +538,22 @@ class VideoTab(TabPane):
             sel.add_option((f"{s['name']} — {s['description']}", i))
         if not remaining:
             self.query_one("#btn-add-suggestion", Button).disabled = True
-        names = ", ".join(f"'{n}'" for n in added)
-        fb.update(f"[green]Agregadas: {names}.[/green]")
+
+        parts = []
+        if new_ones:
+            parts.append(f"Agregadas: {', '.join(s['name'] for s in new_ones)}.")
+        if duplicates:
+            parts.append(f"Ya existían (omitidas): {', '.join(s['name'] for s in duplicates)}.")
         self.post_message(CategoriesChanged())
+
+        session_id = self._selected_session_id
+        if session_id is None:
+            fb.update(f"[green]{' '.join(parts)}[/green]" if parts else "")
+            return
+
+        fb.update(f"[green]{' '.join(parts)}[/green] Reclasificando 'Otros'...")
+        moved = await _reclassify_otros(session_id)
+        fb.update(f"[green]{' '.join(parts)} {moved} segmento(s) reclasificado(s) desde 'Otro'.[/green]")
 
 
 # ─────────────────────────────────────────────────────────────

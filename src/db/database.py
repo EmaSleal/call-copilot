@@ -318,6 +318,15 @@ def get_segments(session_id: int) -> list[Segment]:
     return [Segment(**dict(r)) for r in rows]
 
 
+def update_segment_category(segment_id: int, category_id: int) -> None:
+    """Reassign a single segment's category (used by post-hoc reclassification)."""
+    with _conn() as conn:
+        conn.execute(
+            "UPDATE segments SET category_id=? WHERE id=?",
+            (category_id, segment_id)
+        )
+
+
 def get_segments_by_category(session_id: int, category_id: Optional[int]) -> list[Segment]:
     with _conn() as conn:
         rows = conn.execute(
