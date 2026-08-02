@@ -4,6 +4,10 @@ example copy.env
 
 # Claude Code metadata
 .atl/
+.codegraph/
+
+# Logs
+*.log
 
 # Whisper generated files
 whisper-text/
