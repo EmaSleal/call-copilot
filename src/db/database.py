@@ -56,6 +56,18 @@ class CallSession:
     context: str
     transcript_path: str
     created_at: str = field(default_factory=lambda: datetime.now().isoformat())
+    chroma_collection: Optional[str] = None
+    profile_id: Optional[str] = None
+    title: str = ""
+
+
+@dataclass
+class CallSegment:
+    id: Optional[int]
+    call_session_id: int
+    sort_order: int
+    text: str
+    category_id: Optional[int] = None
 
 
 # ─────────────────────────────────────────────────────────────
@@ -94,13 +106,40 @@ def init_db() -> None:
         );
 
         CREATE TABLE IF NOT EXISTS call_sessions (
+            id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+            context             TEXT NOT NULL DEFAULT '',
+            transcript_path     TEXT NOT NULL,
+            chroma_collection   TEXT,
+            created_at          TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS call_segments (
             id              INTEGER PRIMARY KEY AUTOINCREMENT,
-            context         TEXT NOT NULL DEFAULT '',
-            transcript_path TEXT NOT NULL,
-            created_at      TEXT NOT NULL
+            call_session_id INTEGER NOT NULL REFERENCES call_sessions(id),
+            sort_order      INTEGER NOT NULL,
+            text            TEXT NOT NULL,
+            category_id     INTEGER REFERENCES categories(id)
         );
         """)
         _seed_categories(conn)
+        _migrate(conn)
+
+
+def _migrate(conn: sqlite3.Connection) -> None:
+    """Additive, idempotent schema migrations.
+
+    Each guard reads PRAGMA table_info once per table and only issues ALTER
+    TABLE when the column is absent — safe to run on every init_db() call.
+    """
+    call_session_cols = {
+        r[1] for r in conn.execute("PRAGMA table_info(call_sessions)").fetchall()
+    }
+    if "chroma_collection" not in call_session_cols:
+        conn.execute("ALTER TABLE call_sessions ADD COLUMN chroma_collection TEXT")
+    if "profile_id" not in call_session_cols:
+        conn.execute("ALTER TABLE call_sessions ADD COLUMN profile_id TEXT")
+    if "title" not in call_session_cols:
+        conn.execute("ALTER TABLE call_sessions ADD COLUMN title TEXT DEFAULT ''")
 
 
 def _seed_categories(conn: sqlite3.Connection) -> None:
@@ -278,12 +317,25 @@ def search_segments(query: str, category_id: int = None) -> list[dict]:
 # DAOs — Call Sessions
 # ─────────────────────────────────────────────────────────────
 
-def create_call_session(context: str, transcript_path: str) -> CallSession:
-    cs = CallSession(id=None, context=context, transcript_path=transcript_path)
+def create_call_session(
+    context: str,
+    transcript_path: str,
+    chroma_collection: str = "",
+    profile_id: Optional[str] = None,
+    title: str = "",
+) -> CallSession:
+    cs = CallSession(
+        id=None,
+        context=context,
+        transcript_path=transcript_path,
+        chroma_collection=chroma_collection,
+        profile_id=profile_id,
+        title=title,
+    )
     with _conn() as conn:
         cur = conn.execute(
-            "INSERT INTO call_sessions (context, transcript_path, created_at) VALUES (?,?,?)",
-            (cs.context, cs.transcript_path, cs.created_at)
+            "INSERT INTO call_sessions (context, transcript_path, chroma_collection, profile_id, created_at, title) VALUES (?,?,?,?,?,?)",
+            (cs.context, cs.transcript_path, cs.chroma_collection, cs.profile_id, cs.created_at, cs.title)
         )
         cs.id = cur.lastrowid
     return cs
@@ -295,3 +347,36 @@ def get_call_sessions() -> list[CallSession]:
             "SELECT * FROM call_sessions ORDER BY created_at DESC"
         ).fetchall()
     return [CallSession(**dict(r)) for r in rows]
+
+
+def set_call_session_title(call_session_id: int, title: str) -> None:
+    with _conn() as conn:
+        conn.execute(
+            "UPDATE call_sessions SET title=? WHERE id=?",
+            (title, call_session_id)
+        )
+
+
+# ─────────────────────────────────────────────────────────────
+# DAOs — Call Segments
+# ─────────────────────────────────────────────────────────────
+
+def save_call_segment(seg: CallSegment) -> int:
+    """Insert a CallSegment row and return its new id."""
+    with _conn() as conn:
+        cur = conn.execute(
+            """INSERT INTO call_segments (call_session_id, sort_order, text, category_id)
+               VALUES (?,?,?,?)""",
+            (seg.call_session_id, seg.sort_order, seg.text, seg.category_id)
+        )
+        return cur.lastrowid
+
+
+def get_call_segments(call_session_id: int) -> list[CallSegment]:
+    """Return all CallSegment rows for the given call session, ordered by sort_order."""
+    with _conn() as conn:
+        rows = conn.execute(
+            "SELECT * FROM call_segments WHERE call_session_id=? ORDER BY sort_order",
+            (call_session_id,)
+        ).fetchall()
+    return [CallSegment(**dict(r)) for r in rows]
