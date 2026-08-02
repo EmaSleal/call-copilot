@@ -10,6 +10,7 @@ import logging
 import os
 import sys
 from dotenv import load_dotenv
+from src.core import config_defaults
 from src.core.pipeline import CallCopilotPipeline
 from src.audio.vad_silero import SileroVAD
 from src.trigger.heuristic import HeuristicTriggerDetector
@@ -28,7 +29,7 @@ logger = logging.getLogger("call_copilot.main")
 
 
 def build_stt_provider():
-    backend = os.getenv("STT_BACKEND", "deepgram")  # deepgram | whisper_local
+    backend = config_defaults.stt_backend()  # deepgram | whisper_local
 
     if backend == "deepgram":
         from src.stt.deepgram_provider import DeepgramSTT
@@ -37,13 +38,15 @@ def build_stt_provider():
 
     if backend == "whisper_local":
         from src.stt.whisper_local_provider import WhisperLocalSTT
-        return WhisperLocalSTT(model_size="large-v3-turbo", device="cuda", language="es")
+        return WhisperLocalSTT(
+            model_size=config_defaults.whisper_model_call(), device="cuda", language="es"
+        )
 
     raise ValueError(f"STT_BACKEND desconocido: {backend}")
 
 
 def build_llm_provider():
-    backend = os.environ.get("LLM_BACKEND", "gpt")  # gpt | claude
+    backend = config_defaults.llm_backend()  # gpt | claude
 
     if backend == "gpt":
         from src.llm.openai_provider import OpenAIProvider
