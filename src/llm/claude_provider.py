@@ -49,6 +49,10 @@ Reglas:
 
 
 class ClaudeProvider(LLMProvider):
+    # Identifies the active backend for src.core.pipeline's offline override
+    # validation (provider_of_model_id) — read via getattr(self.llm, "provider_id", None).
+    provider_id = "claude"
+
     def __init__(self, api_key: str, model: str = "claude-haiku-4-5-20251001"):
         # Haiku acá es decisión deliberada, no de presupuesto: en este
         # pipeline la latencia importa más que el razonamiento profundo
@@ -102,7 +106,7 @@ class ClaudeProvider(LLMProvider):
 
         try:
             async with self.client.messages.stream(
-                model=self.model,
+                model=model_override or self.model,
                 max_tokens=200,
                 temperature=0.3,
                 system=system,

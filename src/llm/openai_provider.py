@@ -60,6 +60,10 @@ Reglas:
 
 
 class OpenAIProvider(LLMProvider):
+    # Identifies the active backend for src.core.pipeline's offline override
+    # validation (provider_of_model_id) — read via getattr(self.llm, "provider_id", None).
+    provider_id = "gpt"
+
     def __init__(
         self,
         api_key: str,

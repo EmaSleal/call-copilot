@@ -236,6 +236,62 @@ class TestOpenAIModelOverride:
         result = self.provider._select_model(long, "hi", model_override="")
         assert result == self.provider.mini_model
 
+    def test_provider_id_is_gpt(self):
+        assert self.provider.provider_id == "gpt"
+
+
+def _collected_model_claude(provider: ClaudeProvider, model_override: str) -> str:
+    """Run respond() and capture the `model` kwarg sent to the client."""
+    captured = {}
+
+    class FakeStream:
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, *args):
+            pass
+        def __aiter__(self):
+            return self
+        async def __anext__(self):
+            raise StopAsyncIteration
+        @property
+        def text_stream(self):
+            return self
+        async def get_final_message(self):
+            msg = MagicMock()
+            msg.content = []
+            return msg
+
+    def fake_stream_ctx(**kwargs):
+        captured["model"] = kwargs["model"]
+        return FakeStream()
+
+    provider.client = MagicMock()
+    provider.client.messages = MagicMock()
+    provider.client.messages.stream = MagicMock(side_effect=fake_stream_ctx)
+
+    async def run():
+        async for _ in provider.respond("context", _TRIGGER, model_override=model_override):
+            pass
+
+    asyncio.run(run())
+    return captured["model"]
+
+
+class TestClaudeModelOverride:
+    def setup_method(self):
+        self.provider = ClaudeProvider(api_key="test-key")
+
+    def test_model_override_used_when_set(self):
+        result = _collected_model_claude(self.provider, model_override="claude-opus-4-20250514")
+        assert result == "claude-opus-4-20250514"
+
+    def test_empty_override_uses_self_model(self):
+        result = _collected_model_claude(self.provider, model_override="")
+        assert result == self.provider.model
+
+    def test_provider_id_is_claude(self):
+        assert self.provider.provider_id == "claude"
+
 
 # ── New: response_mode tests (Claude) ────────────────────────────────────────
 

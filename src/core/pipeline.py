@@ -30,8 +30,35 @@ from src.core.interfaces import (
 from src.output.session_logger import SessionLogger
 from src.profiles.models import CallProfile, ResponseMode
 from src.profiles.heuristics import compute_conservative_mode, is_silent_mode_question
+from src.llm.model_catalog import provider_of_model_id
 
 logger = logging.getLogger("call_copilot.pipeline")
+
+
+def resolve_override(model_override: str, active_provider_id: str | None) -> tuple[str, str | None]:
+    """
+    Offline, network-free validation of a profile's model override against
+    the ACTIVE backend (read from the live provider instance, never from
+    config_defaults/env — a mid-session settings save can leave them out of
+    sync with the running provider object). Never hits the model catalog:
+    that discovery is UI-only and must not run on the active-call hot path.
+
+    Returns (resolved_override, notice). notice is None when no adjustment
+    was needed (match, unknown prefix, or no active_provider_id to compare
+    against — e.g. test doubles without a provider_id attribute).
+    """
+    if not model_override or active_provider_id is None:
+        return model_override, None
+
+    override_provider = provider_of_model_id(model_override)
+    if override_provider is None or override_provider == active_provider_id:
+        return model_override, None
+
+    notice = (
+        f"modelo de perfil '{model_override}' no corresponde al proveedor "
+        f"activo '{active_provider_id}'; se descarta y se usa el default del pipeline"
+    )
+    return "", notice
 
 # Meta-responses that silent mode LLMs may emit instead of real content.
 # These are filtered out rather than forwarded to the output sink.
@@ -203,6 +230,11 @@ class CallCopilotPipeline:
             if profile.response_mode == ResponseMode.silent:
                 if not is_silent_mode_question(block_text):
                     return  # skip LLM call entirely
+
+        active_provider_id = getattr(self.llm, "provider_id", None)
+        model_override, override_notice = resolve_override(model_override, active_provider_id)
+        if override_notice:
+            logger.warning(override_notice)
 
         base = f"{self.initial_context}\n\n{rag_context}".strip() if self.initial_context else rag_context
         recent_text = " ".join(self._recent_words)

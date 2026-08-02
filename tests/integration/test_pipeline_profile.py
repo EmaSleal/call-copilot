@@ -11,6 +11,7 @@ The heavy dependencies (RAGStore, openai) are already stubbed by conftest.py.
 """
 
 import asyncio
+import logging
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch, call
 from typing import AsyncIterator
@@ -476,6 +477,50 @@ def _build_pipeline_with_llm(
         active_profile=profile,
     )
     return pipeline, fake_output
+
+
+class FakeLLMWithProviderId(FakeLLM):
+    """FakeLLM exposing a provider_id, so pipeline._handle_trigger's
+    getattr(self.llm, "provider_id", None) resolves to a real value instead
+    of the None it gets from the plain FakeLLM used elsewhere in this file."""
+
+    def __init__(self, provider_id: str):
+        super().__init__()
+        self.provider_id = provider_id
+
+
+class TestPipelineOverrideValidation:
+    """Task 9.2: offline override validation wired into _handle_trigger."""
+
+    def test_foreign_provider_override_dropped_with_warning(self, caplog):
+        """Profile model is a gpt id, active backend is claude → override
+        dropped (forwarded as ''), warning logged, call still emitted."""
+        llm = FakeLLMWithProviderId(provider_id="claude")
+        pipeline, fake_output = _build_pipeline_with_llm(MODEL_OVERRIDE_PROFILE, llm, min_words=1)
+        _set_block(pipeline, "¿Cuáles son las ventajas de los microservicios en este caso?")
+        with caplog.at_level(logging.WARNING):
+            asyncio.run(pipeline._handle_trigger())
+        assert len(llm.calls) == 1
+        assert llm.calls[0]["model_override"] == ""
+        assert any("gpt-5.6-terra" in r.message for r in caplog.records)
+        assert len(fake_output.emissions) == 1  # call proceeds, response is emitted normally
+
+    def test_matching_provider_override_kept(self):
+        """Profile model is a gpt id, active backend is gpt → override forwarded unchanged."""
+        llm = FakeLLMWithProviderId(provider_id="gpt")
+        pipeline, fake_output = _build_pipeline_with_llm(MODEL_OVERRIDE_PROFILE, llm, min_words=1)
+        _set_block(pipeline, "¿Cuáles son las ventajas de los microservicios en este caso?")
+        asyncio.run(pipeline._handle_trigger())
+        assert llm.calls[0]["model_override"] == "gpt-5.6-terra"
+
+    def test_no_provider_id_attribute_forwards_unchanged(self):
+        """Existing FakeLLM (no provider_id) — getattr-guarded None means no
+        validation is attempted; override is forwarded unchanged (backward
+        compatible with every other test double in this file)."""
+        pipeline, fake_llm, _ = _build_pipeline(MODEL_OVERRIDE_PROFILE, min_words=1)
+        _set_block(pipeline, "¿Cuáles son las ventajas de los microservicios en este caso?")
+        asyncio.run(pipeline._handle_trigger())
+        assert fake_llm.calls[0]["model_override"] == "gpt-5.6-terra"
 
 
 class TestPipelineSilentModeMetaResponseFilter:

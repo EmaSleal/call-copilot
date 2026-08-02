@@ -158,6 +158,12 @@ class LLMProvider(ABC):
     Genera la respuesta sugerida. Implementaciones: ClaudeProvider, GPTProvider.
     Streaming es obligatorio acá — en una llamada en vivo, esperar la
     respuesta completa antes de mostrar nada mata el propósito.
+
+    Optional convention (not enforced by this ABC): implementations SHOULD
+    expose a `provider_id: str` class attribute (e.g. "claude", "gpt")
+    identifying the active backend. The pipeline reads it defensively via
+    `getattr(self.llm, "provider_id", None)` to validate a profile's model
+    override offline, without assuming every LLMProvider defines it.
     """
 
     @abstractmethod
