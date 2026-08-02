@@ -1,0 +1,171 @@
+"""
+Unit tests for src.core.config_defaults — canonical realtime provider/backend
+defaults shared by main.py and src/tui/app.py (Phase 2, PR1 of
+config-settings-panel).
+
+Zero-I/O module (pure os.getenv reads) — no mocking required beyond
+monkeypatch.setenv/delenv for isolation between tests.
+"""
+
+import pytest
+
+from src.core.config_defaults import (
+    DEFAULT_LLM_BACKEND,
+    DEFAULT_STT_BACKEND,
+    DEFAULT_WHISPER_MODEL_CALL,
+    DEFAULT_WHISPER_MODEL_VIDEO,
+    WHISPER_SIZES,
+    RESTART_KEYS,
+    Scope,
+    llm_backend,
+    stt_backend,
+    whisper_model_call,
+    whisper_model_video,
+    scope_of,
+)
+
+
+class TestLLMBackendDefault:
+    def test_defaults_to_gpt_when_unset(self, monkeypatch):
+        monkeypatch.delenv("LLM_BACKEND", raising=False)
+        assert llm_backend() == "gpt"
+        assert DEFAULT_LLM_BACKEND == "gpt"
+
+    def test_empty_string_counts_as_unset(self, monkeypatch):
+        monkeypatch.setenv("LLM_BACKEND", "")
+        assert llm_backend() == DEFAULT_LLM_BACKEND
+
+    def test_honors_explicit_value(self, monkeypatch):
+        monkeypatch.setenv("LLM_BACKEND", "claude")
+        assert llm_backend() == "claude"
+
+
+class TestSTTBackendDefault:
+    def test_defaults_to_deepgram_when_unset(self, monkeypatch):
+        monkeypatch.delenv("STT_BACKEND", raising=False)
+        assert stt_backend() == "deepgram"
+        assert DEFAULT_STT_BACKEND == "deepgram"
+
+    def test_empty_string_counts_as_unset(self, monkeypatch):
+        monkeypatch.setenv("STT_BACKEND", "")
+        assert stt_backend() == DEFAULT_STT_BACKEND
+
+    def test_honors_explicit_value(self, monkeypatch):
+        monkeypatch.setenv("STT_BACKEND", "whisper_local")
+        assert stt_backend() == "whisper_local"
+
+
+class TestWhisperModelCall:
+    def test_defaults_to_large_v3_turbo_when_unset(self, monkeypatch):
+        monkeypatch.delenv("WHISPER_MODEL_CALL", raising=False)
+        monkeypatch.delenv("WHISPER_MODEL", raising=False)
+        assert whisper_model_call() == "large-v3-turbo"
+        assert DEFAULT_WHISPER_MODEL_CALL == "large-v3-turbo"
+
+    def test_falls_back_to_legacy_whisper_model(self, monkeypatch):
+        monkeypatch.delenv("WHISPER_MODEL_CALL", raising=False)
+        monkeypatch.setenv("WHISPER_MODEL", "medium")
+        assert whisper_model_call() == "medium"
+
+    def test_new_var_wins_over_legacy(self, monkeypatch):
+        monkeypatch.setenv("WHISPER_MODEL_CALL", "small")
+        monkeypatch.setenv("WHISPER_MODEL", "medium")
+        assert whisper_model_call() == "small"
+
+    def test_empty_new_var_falls_back_to_legacy(self, monkeypatch):
+        monkeypatch.setenv("WHISPER_MODEL_CALL", "")
+        monkeypatch.setenv("WHISPER_MODEL", "medium")
+        assert whisper_model_call() == "medium"
+
+    def test_empty_on_both_falls_back_to_default(self, monkeypatch):
+        monkeypatch.setenv("WHISPER_MODEL_CALL", "")
+        monkeypatch.setenv("WHISPER_MODEL", "")
+        assert whisper_model_call() == DEFAULT_WHISPER_MODEL_CALL
+
+
+class TestWhisperModelVideo:
+    def test_defaults_to_base_when_unset(self, monkeypatch):
+        monkeypatch.delenv("WHISPER_MODEL_VIDEO", raising=False)
+        monkeypatch.delenv("WHISPER_MODEL", raising=False)
+        assert whisper_model_video() == "base"
+        assert DEFAULT_WHISPER_MODEL_VIDEO == "base"
+
+    def test_falls_back_to_legacy_whisper_model(self, monkeypatch):
+        monkeypatch.delenv("WHISPER_MODEL_VIDEO", raising=False)
+        monkeypatch.setenv("WHISPER_MODEL", "medium")
+        assert whisper_model_video() == "medium"
+
+    def test_new_var_wins_over_legacy(self, monkeypatch):
+        monkeypatch.setenv("WHISPER_MODEL_VIDEO", "tiny")
+        monkeypatch.setenv("WHISPER_MODEL", "medium")
+        assert whisper_model_video() == "tiny"
+
+    def test_empty_new_var_falls_back_to_legacy(self, monkeypatch):
+        monkeypatch.setenv("WHISPER_MODEL_VIDEO", "")
+        monkeypatch.setenv("WHISPER_MODEL", "medium")
+        assert whisper_model_video() == "medium"
+
+
+class TestWhisperSizes:
+    def test_contains_expected_sizes(self):
+        assert WHISPER_SIZES == (
+            "tiny", "base", "small", "medium", "large-v3", "large-v3-turbo",
+        )
+
+    def test_defaults_are_valid_sizes(self):
+        assert DEFAULT_WHISPER_MODEL_CALL in WHISPER_SIZES
+        assert DEFAULT_WHISPER_MODEL_VIDEO in WHISPER_SIZES
+
+
+class TestScopeOf:
+    @pytest.mark.parametrize("key,expected", [
+        ("STT_BACKEND", Scope.RESTART),
+        ("WHISPER_MODEL_CALL", Scope.RESTART),
+        ("WHISPER_MODEL_VIDEO", Scope.NEXT_VIDEO),
+        ("LLM_BACKEND", Scope.NEXT_CALL),
+        ("OPENAI_API_KEY", Scope.NEXT_CALL),
+        ("ANTHROPIC_API_KEY", Scope.NEXT_CALL),
+        ("DEEPGRAM_API_KEY", Scope.NEXT_CALL),
+    ])
+    def test_scope_table(self, key, expected):
+        assert scope_of(key) == expected
+
+    def test_unknown_key_defaults_to_next_call(self):
+        assert scope_of("SOME_UNKNOWN_KEY") == Scope.NEXT_CALL
+
+    def test_restart_keys_matches_scope_table(self):
+        # RESTART_KEYS is a convenience set mirroring the "restart" rows of
+        # scope_of()'s table — keep them in sync.
+        assert RESTART_KEYS == {"STT_BACKEND", "WHISPER_MODEL_CALL"}
+        for key in RESTART_KEYS:
+            assert scope_of(key) == Scope.RESTART
+
+
+class TestProviderWiring:
+    """
+    Phase 4: main.py's build_stt_provider/build_llm_provider and
+    src.tui.app's _build_stt/_build_llm must resolve backends via
+    config_defaults getters, and agree with each other when no .env
+    override is present (both land on the "gpt" realtime default).
+    """
+
+    def test_main_and_app_agree_on_llm_backend_with_no_override(self, monkeypatch):
+        monkeypatch.delenv("LLM_BACKEND", raising=False)
+        import main
+        import src.tui.app as app
+
+        llm_main = main.build_llm_provider()
+        llm_app = app._build_llm()
+        assert type(llm_main).__name__ == "OpenAIProvider"
+        assert type(llm_app).__name__ == "OpenAIProvider"
+
+    def test_main_and_app_agree_on_stt_backend_with_no_override(self, monkeypatch):
+        monkeypatch.delenv("STT_BACKEND", raising=False)
+        monkeypatch.setenv("DEEPGRAM_API_KEY", "test-key")
+        import main
+        import src.tui.app as app
+
+        stt_main = main.build_stt_provider()
+        stt_app = app._build_stt()
+        assert type(stt_main).__name__ == "DeepgramSTT"
+        assert type(stt_app).__name__ == "DeepgramSTT"

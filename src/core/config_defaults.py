@@ -1,0 +1,93 @@
+"""
+Defaults canónicos de proveedor/backend en tiempo real, compartidos por
+main.py y src/tui/app.py.
+
+Módulo de solo lectura: cero I/O más allá de os.getenv, cero dependencias
+pesadas — seguro de importar desde el hot path (pipeline.py) sin arrastrar
+dotenv ni escritura a disco. La contraparte de escritura vive en
+src/core/env_store.py, deliberadamente separada por esa misma razón.
+
+Nota: el clasificador batch de video (src/video/classifier.py,
+src/processing/session_processor.py) lee la MISMA variable LLM_BACKEND pero
+con su propio default ("ollama") aplicado inline — eso queda fuera de
+alcance de este módulo (ver Non-Goals del diseño de config-settings-panel).
+"""
+
+import os
+from enum import Enum
+
+DEFAULT_LLM_BACKEND = "gpt"
+DEFAULT_STT_BACKEND = "deepgram"
+DEFAULT_WHISPER_MODEL_CALL = "large-v3-turbo"
+DEFAULT_WHISPER_MODEL_VIDEO = "base"
+
+WHISPER_SIZES = ("tiny", "base", "small", "medium", "large-v3", "large-v3-turbo")
+
+
+class Scope(str, Enum):
+    """Cuándo un cambio de configuración toma efecto."""
+
+    RESTART = "restart"
+    NEXT_CALL = "next_call"
+    NEXT_VIDEO = "next_video"
+
+
+# Claves que requieren reiniciar el proceso porque su valor queda "congelado"
+# en un singleton cargado antes de que Textual abra la terminal
+# (_preload_models en src/tui/app.py). WHISPER_MODEL_VIDEO NO está acá:
+# _process_video() lo relee por job, así que un badge de "reiniciar" sería
+# una afirmación falsa.
+RESTART_KEYS = {"STT_BACKEND", "WHISPER_MODEL_CALL"}
+
+_SCOPE_MAP: dict[str, Scope] = {
+    "STT_BACKEND": Scope.RESTART,
+    "WHISPER_MODEL_CALL": Scope.RESTART,
+    "WHISPER_MODEL_VIDEO": Scope.NEXT_VIDEO,
+}
+
+
+def _getenv_or_default(key: str, default: str) -> str:
+    """os.getenv(key) tratando la cadena vacía como "no configurado"."""
+    return os.getenv(key) or default
+
+
+def llm_backend() -> str:
+    """Backend LLM en tiempo real (Call Copilot). Default: 'gpt'."""
+    return _getenv_or_default("LLM_BACKEND", DEFAULT_LLM_BACKEND)
+
+
+def stt_backend() -> str:
+    """Backend STT en tiempo real. Default: 'deepgram'."""
+    return _getenv_or_default("STT_BACKEND", DEFAULT_STT_BACKEND)
+
+
+def whisper_model_call() -> str:
+    """
+    Tamaño de modelo Whisper local para llamadas en vivo.
+
+    Orden de resolución: WHISPER_MODEL_CALL → WHISPER_MODEL (legado) →
+    default. La cadena vacía cuenta como "no configurado" en cada paso.
+    """
+    value = os.getenv("WHISPER_MODEL_CALL") or os.getenv("WHISPER_MODEL")
+    return value or DEFAULT_WHISPER_MODEL_CALL
+
+
+def whisper_model_video() -> str:
+    """
+    Tamaño de modelo Whisper para el transcriptor de video (batch).
+
+    Orden de resolución: WHISPER_MODEL_VIDEO → WHISPER_MODEL (legado) →
+    default. La cadena vacía cuenta como "no configurado" en cada paso.
+    """
+    value = os.getenv("WHISPER_MODEL_VIDEO") or os.getenv("WHISPER_MODEL")
+    return value or DEFAULT_WHISPER_MODEL_VIDEO
+
+
+def scope_of(key: str) -> Scope:
+    """
+    Devuelve el Scope de una clave de configuración: cuándo un cambio a esa
+    clave toma efecto. Claves no listadas explícitamente (LLM_BACKEND, las
+    tres API keys, etc.) caen en NEXT_CALL — ninguna de ellas está congelada
+    en un singleton pre-cargado.
+    """
+    return _SCOPE_MAP.get(key, Scope.NEXT_CALL)
