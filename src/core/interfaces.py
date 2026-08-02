@@ -125,6 +125,8 @@ class TriggerEvent:
     reason: TriggerReason
     context_text: str          # el texto acumulado relevante para responder
     confidence: float = 1.0
+    conservative_mode: bool = False  # True when block is discourse-marker-only and profile requires a real question
+    recent_context: str = ""   # chronological rolling transcript, last ~300 words
 
 
 class TriggerDetector(ABC):
@@ -159,7 +161,15 @@ class LLMProvider(ABC):
     """
 
     @abstractmethod
-    def respond(self, context: str, trigger: TriggerEvent) -> AsyncIterator[LLMResponse]:
+    def respond(
+        self,
+        context: str,
+        trigger: TriggerEvent,
+        system_prompt_addon: str = "",
+        conservative_mode: bool = False,
+        response_mode: str = "copilot",
+        model_override: str = "",
+    ) -> AsyncIterator[LLMResponse]:
         ...
 
 

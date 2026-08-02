@@ -2,6 +2,7 @@
 PyAudioWPatch==0.2.12.7
 numpy>=1.24
 torch>=2.0
+torchaudio>=2.0
 
 # ── STT ────────────────────────────────────────────────────
 faster-whisper>=1.0          # STT local (whisper_local)
@@ -23,3 +24,10 @@ textual>=0.60.0
 
 # ── Utilitarios ────────────────────────────────────────────
 python-dotenv>=1.0
+
+# ── RAG ────────────────────────────────────────────────────
+chromadb>=0.5.0
+
+# ── Testing ─────────────────────────────────────────────────
+pytest>=8.0
+pytest-asyncio>=0.23
