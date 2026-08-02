@@ -273,3 +273,34 @@ class TestProfileSelectorRefreshAfterDismiss:
         options = get_selector_options(store)
         names = [label for label, _ in options]
         assert victim.name not in names
+
+
+# ---------------------------------------------------------------------------
+# Tests: #pm-model Select options (PR2 — live/fallback catalog, task 9.4)
+# ---------------------------------------------------------------------------
+
+class TestBuildModelSelectOptions:
+    def test_unsupported_backend_falls_back_to_static_list(self, monkeypatch):
+        """'ollama' has no discovery support — falls back to AVAILABLE_MODELS,
+        which already carries the trailing empty-id 'Default' entry once."""
+        from src.tui.app import build_model_select_options
+        from src.profiles.models import AVAILABLE_MODELS
+
+        options = build_model_select_options("ollama")
+        ids = [model_id for _, model_id in options]
+        assert ids == [model_id for model_id, _ in AVAILABLE_MODELS]
+        assert ids.count("") == 1
+
+    def test_live_catalog_gains_the_default_entry_once(self, monkeypatch):
+        """Live discovery results (no built-in '' entry) get exactly one
+        appended Default option — never a duplicate."""
+        import src.tui.app as app_module
+        from src.llm import model_catalog
+
+        fake_models = [model_catalog.ModelInfo(id="gpt-6-x", label="GPT-6 X")]
+        monkeypatch.setattr(model_catalog, "list_models", lambda backend, **kw: fake_models)
+
+        options = app_module.build_model_select_options("gpt")
+        ids = [model_id for _, model_id in options]
+        assert ids == ["gpt-6-x", ""]
+        assert ids.count("") == 1

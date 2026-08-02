@@ -788,6 +788,24 @@ class HistorialTab(TabPane):
 # It is launched from the Call tab via push_screen() and dismissed on close.
 # ─────────────────────────────────────────────────────────────
 
+def build_model_select_options(active_backend: str) -> list[tuple[str, str]]:
+    """
+    Build (label, model_id) pairs for the #pm-model Select from the live-or-
+    fallback model catalog of `active_backend` (src.llm.model_catalog).
+
+    The static AVAILABLE_MODELS fallback already carries a trailing empty-id
+    "Default" entry; live discovery results don't, so it's appended here
+    exactly once — never duplicated.
+    """
+    from src.llm import model_catalog
+
+    models = model_catalog.list_models(active_backend)
+    options = [(m.label, m.id) for m in models]
+    if not any(model_id == "" for _, model_id in options):
+        options.append(("Default — selección automática por contexto", ""))
+    return options
+
+
 class ProfileManagerScreen(ModalScreen):
     """
     CRUD screen for call profiles, mirroring the CategoriesTab pattern:
@@ -854,10 +872,11 @@ class ProfileManagerScreen(ModalScreen):
                     )
                     yield Label("Modelo:")
                     yield Select(
-                        [(label, model_id) for model_id, label in AVAILABLE_MODELS],
+                        build_model_select_options(config_defaults.llm_backend()),
                         id="pm-model",
                         value="",
                     )
+                    yield Button("↻ Actualizar modelos", id="btn-pm-refresh-models", variant="default")
                     yield Button("Guardar", id="btn-pm-save", variant="primary")
 
     def on_mount(self) -> None:
@@ -904,10 +923,25 @@ class ProfileManagerScreen(ModalScreen):
                 self.query_one("#pm-model", Select).value = profile.model
         elif bid == "btn-pm-delete" and self._selected_id:
             self._delete_selected()
+        elif bid == "btn-pm-refresh-models":
+            self._refresh_model_options()
         elif bid == "btn-pm-save":
             self._save()
         elif bid == "btn-pm-close":
             self.dismiss(None)
+
+    def _refresh_model_options(self) -> None:
+        """Manual refresh action (spec: 'Local Cache with TTL and Manual
+        Refresh') — bypasses the cache and re-fetches from the active
+        backend's provider."""
+        from src.llm import model_catalog
+
+        backend = config_defaults.llm_backend()
+        model_catalog.invalidate(backend)
+        select = self.query_one("#pm-model", Select)
+        select.set_options(build_model_select_options(backend))
+        fb = self.query_one("#pm-feedback", Label)
+        fb.update("[green]Modelos actualizados.[/green]")
 
     def _delete_selected(self) -> None:
         fb = self.query_one("#pm-feedback", Label)
@@ -1034,6 +1068,19 @@ def summarize_scopes(changed_keys) -> dict:
         config_defaults.Scope.NEXT_VIDEO: "aplica en el próximo video",
     }
     return {key: labels[config_defaults.scope_of(key)] for key in changed_keys}
+
+
+_KEY_ENV_TO_CATALOG_PROVIDER = {
+    "OPENAI_API_KEY": "gpt",
+    "ANTHROPIC_API_KEY": "claude",
+}
+
+
+def key_to_provider(env_key: str) -> str | None:
+    """Map a saved API-key .env variable name to the model_catalog provider
+    id whose cache must be invalidated (design decision 6). Returns None for
+    keys with no corresponding discovery provider (e.g. DEEPGRAM_API_KEY)."""
+    return _KEY_ENV_TO_CATALOG_PROVIDER.get(env_key)
 
 
 class SettingsScreen(ModalScreen):
@@ -1168,6 +1215,12 @@ class SettingsScreen(ModalScreen):
             # theoretically echo path/context, and changed may hold key values.
             fb.update("[red]No se pudo guardar la configuración.[/red]")
             return
+
+        from src.llm import model_catalog
+        for key in changed:
+            provider = key_to_provider(key)
+            if provider:
+                model_catalog.invalidate(provider)
 
         for key, input_id in _SETTINGS_KEY_INPUT_IDS:
             if key in changed:

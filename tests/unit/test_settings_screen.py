@@ -11,7 +11,9 @@ directly without mounting any widget.
 
 import pytest
 
-from src.tui.app import validate_settings_form, diff_changed_keys, summarize_scopes
+from src.tui.app import (
+    validate_settings_form, diff_changed_keys, summarize_scopes, key_to_provider,
+)
 from src.core.config_defaults import WHISPER_SIZES
 
 
@@ -111,3 +113,22 @@ class TestSummarizeScopes:
     def test_multiple_keys_each_get_their_own_badge(self):
         result = summarize_scopes(["STT_BACKEND", "LLM_BACKEND"])
         assert set(result.keys()) == {"STT_BACKEND", "LLM_BACKEND"}
+
+
+# ---------------------------------------------------------------------------
+# key_to_provider() — PR2: maps a saved API-key env var to the model_catalog
+# provider whose cache must be invalidated (design decision 6).
+# ---------------------------------------------------------------------------
+
+class TestKeyToProvider:
+    def test_openai_key_maps_to_gpt(self):
+        assert key_to_provider("OPENAI_API_KEY") == "gpt"
+
+    def test_anthropic_key_maps_to_claude(self):
+        assert key_to_provider("ANTHROPIC_API_KEY") == "claude"
+
+    def test_deepgram_key_has_no_catalog_provider(self):
+        assert key_to_provider("DEEPGRAM_API_KEY") is None
+
+    def test_unrelated_key_has_no_catalog_provider(self):
+        assert key_to_provider("LLM_BACKEND") is None
