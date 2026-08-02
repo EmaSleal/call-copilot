@@ -1,5 +1,7 @@
 # Call Copilot
 
+![Unified Copilot](docs/assets/promo-banner.svg)
+
 TUI (Textual) que corre en paralelo dos flujos: **Call Copilot** (transcripción
 en vivo + sugerencias de un LLM, disparadas por fin de turno o pregunta
 detectada) y **Video Transcriber** (bajar un video de YouTube, transcribirlo,
