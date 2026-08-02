@@ -48,6 +48,23 @@ if _log_file:
     logging.getLogger().setLevel(logging.DEBUG)
 
 
+def build_audio_sink_options() -> list[tuple[str, str]]:
+    """
+    Build (label, value) pairs for CallCopilotTab's "Salida de audio a
+    capturar" Select. Value "" means "system default sink" (the pre-existing
+    behavior); a non-empty value is a bare sink name, passed as
+    PulseLoopbackSource(device=...) — that class appends ".monitor" itself.
+
+    Only meaningful on Linux; on other platforms or when pactl is
+    unavailable, list_sinks() returns [] and only the default option shows.
+    """
+    from src.audio.pulse_source import list_sinks, sink_label
+
+    options = [("Default (sink del sistema)", "")]
+    options.extend((sink_label(s), s.name) for s in list_sinks())
+    return options
+
+
 def _should_trigger_processing(session_id) -> bool:
     """Return True when a post-session processing run should be scheduled.
 
@@ -170,6 +187,8 @@ class CallCopilotTab(TabPane):
         self._profile_store = ProfileStore()
         # Active profile is snapshotted at call start (no live reload during an active call).
         self._active_profile: CallProfile = self._profile_store.get_active()
+        # "" means system default sink (PulseLoopbackSource(device=None)) — see build_audio_sink_options.
+        self._audio_device: str = ""
 
     def compose(self) -> ComposeResult:
         yield Label("Título de la sesión (opcional):")
@@ -183,6 +202,14 @@ class CallCopilotTab(TabPane):
             value=self._active_profile.id,
             id="profile-select",
         )
+        yield Label("Salida de audio a capturar (Linux — qué sale por la corneta/auriculares):")
+        with Horizontal(id="audio-sink-row"):
+            yield Select(
+                options=build_audio_sink_options(),
+                value="",
+                id="audio-sink-select",
+            )
+            yield Button("↻", id="btn-refresh-sinks", variant="default")
         with Horizontal(id="call-buttons"):
             yield Button("▶ Iniciar", id="btn-start-call", variant="success")
             yield Button("⏹ Detener", id="btn-stop-call", variant="error", disabled=True)
@@ -195,11 +222,13 @@ class CallCopilotTab(TabPane):
         yield RichLog(id="suggestion-log", highlight=True, markup=True, wrap=True)
 
     def on_select_changed(self, event: Select.Changed) -> None:
-        """Update active profile when the user picks a different option."""
+        """Update active profile / audio sink when the user picks a different option."""
         if event.select.id == "profile-select":
             profile = self._profile_store.get(str(event.value))
             if profile is not None:
                 self._active_profile = profile
+        elif event.select.id == "audio-sink-select":
+            self._audio_device = str(event.value) if event.value else ""
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "btn-start-call":
@@ -210,6 +239,8 @@ class CallCopilotTab(TabPane):
             self.app.push_screen(ProfileManagerScreen(self._profile_store), self._on_profiles_managed)
         elif event.button.id == "btn-settings":
             self.app.push_screen(SettingsScreen(), self._on_profiles_managed)
+        elif event.button.id == "btn-refresh-sinks":
+            self.query_one("#audio-sink-select", Select).set_options(build_audio_sink_options())
 
     def _on_profiles_managed(self, _result) -> None:
         """Called when ProfileManagerScreen dismisses; refresh the Select options."""
@@ -306,7 +337,7 @@ class CallCopilotTab(TabPane):
             _audio_source = WASAPILoopbackSource()
         else:
             from src.audio.pulse_source import PulseLoopbackSource
-            _audio_source = PulseLoopbackSource()
+            _audio_source = PulseLoopbackSource(device=self._audio_device or None)
 
         vad = _silero_vad_instance
         if vad is None:
