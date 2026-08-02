@@ -14,6 +14,7 @@ from src.core.config_defaults import (
     DEFAULT_STT_BACKEND,
     DEFAULT_WHISPER_MODEL_CALL,
     DEFAULT_WHISPER_MODEL_VIDEO,
+    DEFAULT_SILENCE_THRESHOLD_MS,
     WHISPER_SIZES,
     RESTART_KEYS,
     Scope,
@@ -21,6 +22,7 @@ from src.core.config_defaults import (
     stt_backend,
     whisper_model_call,
     whisper_model_video,
+    silence_threshold_ms,
     scope_of,
 )
 
@@ -106,6 +108,25 @@ class TestWhisperModelVideo:
         assert whisper_model_video() == "medium"
 
 
+class TestSilenceThresholdMs:
+    def test_defaults_to_2000_when_unset(self, monkeypatch):
+        monkeypatch.delenv("SILENCE_THRESHOLD_MS", raising=False)
+        assert silence_threshold_ms() == 2000
+        assert DEFAULT_SILENCE_THRESHOLD_MS == 2000
+
+    def test_empty_string_counts_as_unset(self, monkeypatch):
+        monkeypatch.setenv("SILENCE_THRESHOLD_MS", "")
+        assert silence_threshold_ms() == DEFAULT_SILENCE_THRESHOLD_MS
+
+    def test_honors_explicit_value(self, monkeypatch):
+        monkeypatch.setenv("SILENCE_THRESHOLD_MS", "1500")
+        assert silence_threshold_ms() == 1500
+
+    def test_non_numeric_value_falls_back_to_default(self, monkeypatch):
+        monkeypatch.setenv("SILENCE_THRESHOLD_MS", "not-a-number")
+        assert silence_threshold_ms() == DEFAULT_SILENCE_THRESHOLD_MS
+
+
 class TestWhisperSizes:
     def test_contains_expected_sizes(self):
         assert WHISPER_SIZES == (
@@ -122,6 +143,7 @@ class TestScopeOf:
         ("STT_BACKEND", Scope.RESTART),
         ("WHISPER_MODEL_CALL", Scope.RESTART),
         ("WHISPER_MODEL_VIDEO", Scope.NEXT_VIDEO),
+        ("SILENCE_THRESHOLD_MS", Scope.RESTART),
         ("LLM_BACKEND", Scope.NEXT_CALL),
         ("OPENAI_API_KEY", Scope.NEXT_CALL),
         ("ANTHROPIC_API_KEY", Scope.NEXT_CALL),
@@ -136,7 +158,7 @@ class TestScopeOf:
     def test_restart_keys_matches_scope_table(self):
         # RESTART_KEYS is a convenience set mirroring the "restart" rows of
         # scope_of()'s table — keep them in sync.
-        assert RESTART_KEYS == {"STT_BACKEND", "WHISPER_MODEL_CALL"}
+        assert RESTART_KEYS == {"STT_BACKEND", "WHISPER_MODEL_CALL", "SILENCE_THRESHOLD_MS"}
         for key in RESTART_KEYS:
             assert scope_of(key) == Scope.RESTART
 

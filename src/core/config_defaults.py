@@ -20,6 +20,7 @@ DEFAULT_LLM_BACKEND = "gpt"
 DEFAULT_STT_BACKEND = "deepgram"
 DEFAULT_WHISPER_MODEL_CALL = "large-v3-turbo"
 DEFAULT_WHISPER_MODEL_VIDEO = "base"
+DEFAULT_SILENCE_THRESHOLD_MS = 2000
 
 WHISPER_SIZES = ("tiny", "base", "small", "medium", "large-v3", "large-v3-turbo")
 
@@ -34,15 +35,17 @@ class Scope(str, Enum):
 
 # Claves que requieren reiniciar el proceso porque su valor queda "congelado"
 # en un singleton cargado antes de que Textual abra la terminal
-# (_preload_models en src/tui/app.py). WHISPER_MODEL_VIDEO NO está acá:
+# (_preload_models en src/tui/bootstrap.py). WHISPER_MODEL_VIDEO NO está acá:
 # _process_video() lo relee por job, así que un badge de "reiniciar" sería
-# una afirmación falsa.
-RESTART_KEYS = {"STT_BACKEND", "WHISPER_MODEL_CALL"}
+# una afirmación falsa. SILENCE_THRESHOLD_MS sí — el SileroVAD que arma
+# _preload_models() es el mismo singleton reusado en cada llamada.
+RESTART_KEYS = {"STT_BACKEND", "WHISPER_MODEL_CALL", "SILENCE_THRESHOLD_MS"}
 
 _SCOPE_MAP: dict[str, Scope] = {
     "STT_BACKEND": Scope.RESTART,
     "WHISPER_MODEL_CALL": Scope.RESTART,
     "WHISPER_MODEL_VIDEO": Scope.NEXT_VIDEO,
+    "SILENCE_THRESHOLD_MS": Scope.RESTART,
 }
 
 
@@ -81,6 +84,20 @@ def whisper_model_video() -> str:
     """
     value = os.getenv("WHISPER_MODEL_VIDEO") or os.getenv("WHISPER_MODEL")
     return value or DEFAULT_WHISPER_MODEL_VIDEO
+
+
+def silence_threshold_ms() -> int:
+    """
+    Milisegundos de silencio sostenido antes de que el VAD dispare fin de
+    turno. Un valor inválido o ausente cae al default sin romper el arranque.
+    """
+    value = os.getenv("SILENCE_THRESHOLD_MS")
+    if not value:
+        return DEFAULT_SILENCE_THRESHOLD_MS
+    try:
+        return int(value)
+    except ValueError:
+        return DEFAULT_SILENCE_THRESHOLD_MS
 
 
 def scope_of(key: str) -> Scope:

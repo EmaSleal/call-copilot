@@ -228,8 +228,9 @@ class CallCopilotTab(TabPane):
         vad = bootstrap._silero_vad_instance
         if vad is None:
             from src.audio.vad_silero import SileroVAD
+            from src.core import config_defaults
 
-            vad = SileroVAD(silence_threshold_ms=2000)
+            vad = SileroVAD(silence_threshold_ms=config_defaults.silence_threshold_ms())
 
         # Snapshot the active profile at call start — no live reload during the call.
         active_profile = self._active_profile

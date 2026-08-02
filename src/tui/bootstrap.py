@@ -68,5 +68,7 @@ def _preload_models() -> None:
     print("Loading Silero VAD...")
     from src.audio.vad_silero import SileroVAD
 
-    _silero_vad_instance = SileroVAD(silence_threshold_ms=2000)
+    _silero_vad_instance = SileroVAD(
+        silence_threshold_ms=config_defaults.silence_threshold_ms()
+    )
     print("VAD ready.")
