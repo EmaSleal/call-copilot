@@ -210,7 +210,7 @@ class TestStopCallTriggersProcessor:
         """
         _stop_call() must schedule session_processor.process when _pipeline._session_id is set.
         """
-        from src.tui.app import CallCopilotTab
+        from src.tui.tabs.call import CallCopilotTab
 
         tab = CallCopilotTab.__new__(CallCopilotTab)
         mock_pipeline = MagicMock()
@@ -221,8 +221,8 @@ class TestStopCallTriggersProcessor:
         tab._pipeline_task = None
 
         with (
-            patch("src.tui.app.asyncio.create_task") as mock_create_task,
-            patch("src.tui.app.process"),
+            patch("src.tui.tabs.call.asyncio.create_task") as mock_create_task,
+            patch("src.tui.tabs.call.process"),
         ):
             tab.query_one = MagicMock(side_effect=lambda *a, **kw: MagicMock(disabled=False))
             tab._stop_call()
@@ -230,7 +230,7 @@ class TestStopCallTriggersProcessor:
 
     def test_process_not_called_when_no_session_id(self, isolated_db):
         """_stop_call() must NOT call process when _session_id is None."""
-        from src.tui.app import CallCopilotTab
+        from src.tui.tabs.call import CallCopilotTab
 
         tab = CallCopilotTab.__new__(CallCopilotTab)
         mock_pipeline = MagicMock()
@@ -240,8 +240,8 @@ class TestStopCallTriggersProcessor:
         tab._pipeline_task = None
 
         with (
-            patch("src.tui.app.asyncio.create_task"),
-            patch("src.tui.app.process") as mock_process,
+            patch("src.tui.tabs.call.asyncio.create_task"),
+            patch("src.tui.tabs.call.process") as mock_process,
         ):
             tab.query_one = MagicMock(side_effect=lambda *a, **kw: MagicMock(disabled=False))
             tab._stop_call()
@@ -256,17 +256,17 @@ class TestStopCallProcessorLogicPure:
 
     def test_should_trigger_returns_true_when_session_id_set(self):
         """_should_trigger_processing returns True when session_id is a non-None int."""
-        from src.tui.app import _should_trigger_processing
+        from src.tui.tabs.call import _should_trigger_processing
         assert _should_trigger_processing(session_id=42) is True
 
     def test_should_trigger_returns_false_when_session_id_none(self):
         """_should_trigger_processing returns False when session_id is None."""
-        from src.tui.app import _should_trigger_processing
+        from src.tui.tabs.call import _should_trigger_processing
         assert _should_trigger_processing(session_id=None) is False
 
     def test_should_trigger_returns_false_when_session_id_zero(self):
         """_should_trigger_processing returns False for falsy session_id=0."""
-        from src.tui.app import _should_trigger_processing
+        from src.tui.tabs.call import _should_trigger_processing
         assert _should_trigger_processing(session_id=0) is False
 
 
@@ -278,23 +278,23 @@ class TestTitledSessionsPure:
     """
 
     def test_keeps_sessions_with_title(self):
-        from src.tui.app import _titled_sessions
+        from src.tui.tabs.historial import _titled_sessions
         titled = CallSession(id=1, context="c", transcript_path="p.txt", title="Q1 Review")
         assert _titled_sessions([titled]) == [titled]
 
     def test_drops_sessions_with_empty_title(self):
-        from src.tui.app import _titled_sessions
+        from src.tui.tabs.historial import _titled_sessions
         untitled = CallSession(id=1, context="c", transcript_path="p.txt", title="")
         assert _titled_sessions([untitled]) == []
 
     def test_mixed_list_keeps_only_titled(self):
-        from src.tui.app import _titled_sessions
+        from src.tui.tabs.historial import _titled_sessions
         titled = CallSession(id=1, context="c", transcript_path="p.txt", title="Titled")
         untitled = CallSession(id=2, context="c", transcript_path="p.txt", title="")
         assert _titled_sessions([titled, untitled]) == [titled]
 
     def test_works_with_unified_session(self):
-        from src.tui.app import _titled_sessions
+        from src.tui.tabs.historial import _titled_sessions
         from src.db.database import UnifiedSession
         titled = UnifiedSession(id=1, source="video", title="A talk", created_at="2026-01-01")
         untitled = UnifiedSession(id=2, source="call", title="", created_at="2026-01-01")
@@ -309,11 +309,11 @@ class TestParseSessionRowKeyPure:
     """
 
     def test_parses_call_key(self):
-        from src.tui.app import _parse_session_row_key
+        from src.tui.tabs.historial import _parse_session_row_key
         assert _parse_session_row_key("call:12") == ("call", 12)
 
     def test_parses_video_key(self):
-        from src.tui.app import _parse_session_row_key
+        from src.tui.tabs.historial import _parse_session_row_key
         assert _parse_session_row_key("video:3") == ("video", 3)
 
 

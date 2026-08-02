@@ -144,7 +144,7 @@ class TestScopeOf:
 class TestProviderWiring:
     """
     Phase 4: main.py's build_stt_provider/build_llm_provider and
-    src.tui.app's _build_stt/_build_llm must resolve backends via
+    src.tui.bootstrap's _build_stt/_build_llm must resolve backends via
     config_defaults getters, and agree with each other when no .env
     override is present (both land on the "gpt" realtime default).
     """
@@ -152,10 +152,10 @@ class TestProviderWiring:
     def test_main_and_app_agree_on_llm_backend_with_no_override(self, monkeypatch):
         monkeypatch.delenv("LLM_BACKEND", raising=False)
         import main
-        import src.tui.app as app
+        import src.tui.bootstrap as bootstrap
 
         llm_main = main.build_llm_provider()
-        llm_app = app._build_llm()
+        llm_app = bootstrap._build_llm()
         assert type(llm_main).__name__ == "OpenAIProvider"
         assert type(llm_app).__name__ == "OpenAIProvider"
 
@@ -163,9 +163,9 @@ class TestProviderWiring:
         monkeypatch.delenv("STT_BACKEND", raising=False)
         monkeypatch.setenv("DEEPGRAM_API_KEY", "test-key")
         import main
-        import src.tui.app as app
+        import src.tui.bootstrap as bootstrap
 
         stt_main = main.build_stt_provider()
-        stt_app = app._build_stt()
+        stt_app = bootstrap._build_stt()
         assert type(stt_main).__name__ == "DeepgramSTT"
         assert type(stt_app).__name__ == "DeepgramSTT"

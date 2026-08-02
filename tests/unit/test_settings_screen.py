@@ -11,7 +11,7 @@ directly without mounting any widget.
 
 import pytest
 
-from src.tui.app import (
+from src.tui.screens.settings import (
     validate_settings_form, diff_changed_keys, summarize_scopes, key_to_provider,
 )
 from src.core.config_defaults import WHISPER_SIZES
