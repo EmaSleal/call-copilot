@@ -361,3 +361,99 @@ class TestAnswerToolsQuery:
 
         assert answer
         assert "Chroma" not in answer
+
+
+# ─────────────────────────────────────────────────────────────
+# import_from_tech_scout() — settings-triggered import from tech-scout's
+# standalone tools.db (a separate personal project, no per-call association)
+# ─────────────────────────────────────────────────────────────
+
+@pytest.fixture
+def tech_scout_db(tmp_path):
+    """A minimal tech-scout-shaped SQLite DB with 2 tools."""
+    import sqlite3
+
+    db_path = tmp_path / "tech_scout_tools.db"
+    conn = sqlite3.connect(db_path)
+    conn.execute("""
+        CREATE TABLE tools (
+            id INTEGER PRIMARY KEY, name TEXT, url TEXT, github_url TEXT,
+            category TEXT, description TEXT, summary TEXT,
+            github_stars INTEGER, language TEXT, tags TEXT, created_at TEXT
+        )
+    """)
+    conn.execute(
+        "INSERT INTO tools (name, url, github_url, category, description, summary, "
+        "github_stars, language, tags) VALUES (?,?,?,?,?,?,?,?,?)",
+        (
+            "ripgrep", None, "https://github.com/BurntSushi/ripgrep", "CLI",
+            "Fast grep replacement", "Recursive regex search tool.",
+            50000, "Rust", json.dumps(["cli", "search"]),
+        ),
+    )
+    conn.execute(
+        "INSERT INTO tools (name, url, github_url, category, description, summary, "
+        "github_stars, language, tags) VALUES (?,?,?,?,?,?,?,?,?)",
+        ("SuiteCRM", "https://suitecrm.com", None, "Platform", "Open source CRM", "", None, None, None),
+    )
+    conn.commit()
+    conn.close()
+    return db_path
+
+
+class TestImportFromTechScout:
+    def test_imports_all_rows_on_empty_catalog(self, patched_db, tech_scout_db, no_openai_key):
+        from src.processing import tool_extractor
+
+        imported, skipped = tool_extractor.import_from_tech_scout(str(tech_scout_db))
+
+        assert imported == 2
+        assert skipped == 0
+        names = {t.name for t in patched_db.get_tools()}
+        assert names == {"ripgrep", "SuiteCRM"}
+
+    def test_github_url_and_language_folded_into_description_and_tags(
+        self, patched_db, tech_scout_db, no_openai_key
+    ):
+        from src.processing import tool_extractor
+
+        tool_extractor.import_from_tech_scout(str(tech_scout_db))
+
+        rg = patched_db.find_tool_by_name("ripgrep")
+        assert "github.com/BurntSushi/ripgrep" in rg.description
+        assert "Rust" in json.loads(rg.tags)
+
+    def test_existing_tool_is_skipped_not_duplicated(self, patched_db, tech_scout_db, no_openai_key):
+        from src.processing import tool_extractor
+
+        patched_db.create_tool(
+            patched_db.Tool(
+                id=None, name="ripgrep", normalized_name=patched_db.normalize_tool_name("ripgrep"),
+                description="already enriched by a call mention",
+            )
+        )
+
+        imported, skipped = tool_extractor.import_from_tech_scout(str(tech_scout_db))
+
+        assert imported == 1
+        assert skipped == 1
+        rg = patched_db.find_tool_by_name("ripgrep")
+        assert rg.description == "already enriched by a call mention"
+
+    def test_missing_source_db_raises_file_not_found(self, patched_db):
+        from src.processing import tool_extractor
+
+        with pytest.raises(FileNotFoundError):
+            tool_extractor.import_from_tech_scout(str(patched_db.DB_PATH.parent / "nope.db"))
+
+    def test_embeds_imported_tools_when_openai_key_present(self, patched_db, tech_scout_db, with_openai_key):
+        from src.processing import tool_extractor
+
+        mock_store = MagicMock()
+        mock_store.add_tool = AsyncMock(return_value=True)
+        mock_store_cls = MagicMock(return_value=mock_store)
+
+        with patch.object(tool_extractor, "ToolsCatalogStore", mock_store_cls):
+            tool_extractor.import_from_tech_scout(str(tech_scout_db))
+
+        assert mock_store.add_tool.await_count == 2

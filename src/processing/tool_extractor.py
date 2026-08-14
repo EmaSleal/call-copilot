@@ -14,6 +14,8 @@ import asyncio
 import json
 import logging
 import os
+import sqlite3
+from pathlib import Path
 
 import anthropic
 import openai
@@ -197,6 +199,67 @@ def ingest_tools(call_session_id: int, spoken_text: str) -> int:
         asyncio.run(_embed_tools(touched_tools))
 
     return len(touched_tools)
+
+
+def _map_tech_scout_row(row: sqlite3.Row) -> Tool:
+    """tech-scout's url/github_url/github_stars/language have no matching
+    column here, so they're folded into description/tags instead of dropped."""
+    description = row["description"] or ""
+    link = row["github_url"] or row["url"] or ""
+    if link:
+        description = f"{description} ({link})".strip()
+
+    tags = []
+    if row["tags"]:
+        try:
+            tags = json.loads(row["tags"])
+        except (json.JSONDecodeError, TypeError):
+            tags = []
+    if row["language"]:
+        tags.append(row["language"])
+
+    return Tool(
+        id=None,
+        name=row["name"],
+        normalized_name=normalize_tool_name(row["name"]),
+        category=row["category"] or "",
+        description=description,
+        summary=row["summary"] or "",
+        tags=json.dumps(tags),
+    )
+
+
+def import_from_tech_scout(db_path: str) -> tuple[int, int]:
+    """
+    Import tools already saved in tech-scout's SQLite DB — a separate
+    personal project with no per-call association — into this catalog.
+    Never overwrites an existing tool's enrichment on a name collision.
+
+    Returns (imported_count, skipped_count).
+    """
+    if not Path(db_path).exists():
+        raise FileNotFoundError(db_path)
+
+    src_conn = sqlite3.connect(db_path)
+    src_conn.row_factory = sqlite3.Row
+    try:
+        rows = src_conn.execute("SELECT * FROM tools ORDER BY name").fetchall()
+    finally:
+        src_conn.close()
+
+    imported: list[Tool] = []
+    skipped = 0
+    for row in rows:
+        tool = _map_tech_scout_row(row)
+        if find_tool_by_name(tool.name) is not None:
+            skipped += 1
+            continue
+        imported.append(create_tool(tool))
+
+    if imported:
+        asyncio.run(_embed_tools(imported))
+
+    return len(imported), skipped
 
 
 async def search_tools(query: str, top_k: int = 5) -> list[Tool]:
