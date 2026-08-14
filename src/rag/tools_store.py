@@ -30,7 +30,7 @@ class ToolsCatalogStore:
         return True
 
     async def search(self, query: str, top_k: int = 5) -> list[tuple[int, float]]:
-        if not query.strip():
+        if not query.strip() or not self._openai:
             return []
         count = self._collection.count()
         if count == 0:
