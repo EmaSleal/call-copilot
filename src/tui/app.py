@@ -8,6 +8,7 @@ Tabs:
   [3] Buscar         — search full-text en segmentos de BD
   [4] Categorías     — CRUD de taxonomía
   [5] Historial      — navegar sesiones de llamada pasadas e ideas extraídas
+  [6] Tools          — catálogo de tecnologías detectadas en las llamadas
 
 Este módulo es solo el shell de la app (UnifiedApp) y el entrypoint. Cada
 tab/screen vive en su propio módulo bajo tabs/ y screens/ — ver ahí por la
@@ -30,6 +31,7 @@ from src.tui.tabs.call import CallCopilotTab
 from src.tui.tabs.categories import CategoriesTab
 from src.tui.tabs.historial import HistorialTab
 from src.tui.tabs.search import SearchTab
+from src.tui.tabs.tools import ToolsTab
 from src.tui.tabs.video import VideoTab
 
 load_dotenv()
@@ -76,6 +78,8 @@ class UnifiedApp(App):
     #tab-video Horizontal Input { width: 1fr; }
     #tab-search Horizontal { height: auto; }
     #tab-search Horizontal Input { width: 1fr; }
+    #tab-tools Horizontal { height: auto; }
+    #tab-tools Horizontal Input { width: 1fr; }
     Select { margin-bottom: 1; }
     """
 
@@ -86,6 +90,7 @@ class UnifiedApp(App):
         Binding("3", "switch_tab('tab-search')", "Buscar"),
         Binding("4", "switch_tab('tab-categories')", "Categorías"),
         Binding("5", "switch_tab('tab-historial')", "Historial"),
+        Binding("6", "switch_tab('tab-tools')", "Tools"),
         Binding("ctrl+s", "open_settings", "Configuración"),
     ]
 
@@ -100,6 +105,7 @@ class UnifiedApp(App):
             yield SearchTab()
             yield CategoriesTab()
             yield HistorialTab()
+            yield ToolsTab()
         yield Footer()
 
     def action_switch_tab(self, tab_id: str) -> None:
@@ -111,6 +117,14 @@ class UnifiedApp(App):
 
     def on_categories_changed(self, event: CategoriesChanged) -> None:
         self.query_one(CategoriesTab)._refresh()
+
+    def on_tabbed_content_tab_activated(self, event: TabbedContent.TabActivated) -> None:
+        """TabbedContent mounts every pane once at startup — panes that define
+        refresh_data() (data can go stale while another tab was active) get a
+        chance to reload when the user switches back to them."""
+        refresh = getattr(event.pane, "refresh_data", None)
+        if refresh:
+            refresh()
 
 
 # ─────────────────────────────────────────────────────────────
