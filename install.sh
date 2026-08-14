@@ -1,16 +1,17 @@
-#!/usr/bin/env bash
-# Call Copilot installer.
+#!/bin/sh
+# Call Copilot installer. POSIX sh — no bashisms — so it runs with plain
+# `sh` on systems that don't have bash installed at all.
 #
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/EmaSleal/call-copilot/linux-support/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/EmaSleal/call-copilot/linux-support/install.sh | sh
 #
 # Installs call-copilot as a global command via pipx (no manual git clone
 # needed — pipx clones the repo internally). Prompts once for which
 # optional components to install; the choice is saved to
 # ~/.call-copilot/install-profile so `call-copilot update` can reinstall
 # later without asking again. Re-running this script (e.g. to switch
-# profiles) is safe — it force-reinstalls.
-set -euo pipefail
+# profiles) is safe.
+set -eu
 
 REPO_URL="https://github.com/EmaSleal/call-copilot.git"
 BRANCH="linux-support"
@@ -42,8 +43,8 @@ if ! command -v pipx >/dev/null 2>&1; then
     python3 -m pipx ensurepath
     echo
     echo "pipx se instaló. Puede que necesites abrir una terminal nueva"
-    echo "(o correr 'source ~/.bashrc') para que 'pipx' quede en el PATH."
-    echo "Volvé a correr este script después de eso."
+    echo "(o correr 'source ~/.bashrc' / equivalente de tu shell) para que"
+    echo "'pipx' quede en el PATH. Volvé a correr este script después de eso."
     exit 0
 fi
 
@@ -52,22 +53,40 @@ echo "¿Qué querés instalar?"
 echo "  1) Mínimo   — solo llamadas en vivo (Deepgram + GPT/Claude/Ollama)"
 echo "  2) Completo — todo (Whisper local, video, catálogo de tools con RAG)"
 echo "  3) Elegir a mano"
-read -rp "Elegí [1-3] (default: 1): " PROFILE_CHOICE
+printf "Elegí [1-3] (default: 1): "
+read -r PROFILE_CHOICE
 PROFILE_CHOICE="${PROFILE_CHOICE:-1}"
 
 EXTRAS=""
 case "$PROFILE_CHOICE" in
-    1) EXTRAS="" ;;
-    2) EXTRAS="whisper-local,video,rag" ;;
+    1)
+        EXTRAS=""
+        ;;
+    2)
+        EXTRAS="whisper-local,video,rag"
+        ;;
     3)
-        SELECTED=()
-        read -rp "¿Whisper local para STT? [y/N]: " ans
-        [[ "${ans:-}" =~ ^[Yy]$ ]] && SELECTED+=("whisper-local")
-        read -rp "¿Procesar videos de YouTube? [y/N]: " ans
-        [[ "${ans:-}" =~ ^[Yy]$ ]] && SELECTED+=("video")
-        read -rp "¿Catálogo de tools con búsqueda semántica (RAG)? [y/N]: " ans
-        [[ "${ans:-}" =~ ^[Yy]$ ]] && SELECTED+=("rag")
-        EXTRAS="$(IFS=,; echo "${SELECTED[*]:-}")"
+        printf "¿Whisper local para STT? [y/N]: "
+        read -r ans
+        case "$ans" in
+            [Yy]*) EXTRAS="whisper-local" ;;
+        esac
+
+        printf "¿Procesar videos de YouTube? [y/N]: "
+        read -r ans
+        case "$ans" in
+            [Yy]*)
+                if [ -n "$EXTRAS" ]; then EXTRAS="$EXTRAS,video"; else EXTRAS="video"; fi
+                ;;
+        esac
+
+        printf "¿Catálogo de tools con búsqueda semántica (RAG)? [y/N]: "
+        read -r ans
+        case "$ans" in
+            [Yy]*)
+                if [ -n "$EXTRAS" ]; then EXTRAS="$EXTRAS,rag"; else EXTRAS="rag"; fi
+                ;;
+        esac
         ;;
     *)
         echo "Opción inválida — instalo el perfil mínimo." >&2
@@ -88,7 +107,7 @@ echo "Instalando: $SPEC"
 # uv-backed venv creation refuses to clear a venv from a prior session on
 # some setups, so --force fails outright there. Uninstalling a package
 # that isn't installed yet (first run) exits nonzero — expected, ignored.
-pipx uninstall call-copilot || true
+pipx uninstall call-copilot >/dev/null 2>&1 || true
 pipx install "$SPEC"
 
 mkdir -p "$APP_HOME"
