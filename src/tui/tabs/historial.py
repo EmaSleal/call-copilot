@@ -5,6 +5,7 @@ from textual.widgets import Button, DataTable, Label, TabPane
 
 import src.db.database as db
 from src.tui.screens.category_reclassify_modal import CategoryReclassifyModal
+from src.tui.screens.fragment_edit_modal import FragmentEditModal
 
 
 def _titled_sessions(sessions: list) -> list:
@@ -44,6 +45,7 @@ class HistorialTab(TabPane):
         self._selected_source: str | None = None
         self._selected_session_id: int | None = None
         self._categories_cache: dict[int, str] = {}
+        self._current_fragments: dict[str, db.UnifiedSegment] = {}
 
     def compose(self) -> ComposeResult:
         yield Label("Sesiones:")
@@ -103,6 +105,7 @@ class HistorialTab(TabPane):
     def _load_ideas_for_session(self, source: str, session_id: int) -> None:
         ideas_table = self.query_one("#historial-ideas-table", DataTable)
         ideas_table.clear()
+        self._current_fragments = {}
         fragments = db.get_unified_segments(source=source, session_id=session_id)
         if not fragments:
             self.query_one("#historial-status", Label).update(
@@ -117,7 +120,9 @@ class HistorialTab(TabPane):
                 if frag.category_id
                 else "—"
             )
-            ideas_table.add_row(str(i), excerpt, cat_label)
+            row_key = f"{frag.source}:{frag.id}"
+            self._current_fragments[row_key] = frag
+            ideas_table.add_row(str(i), excerpt, cat_label, key=row_key)
 
     def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
         if event.data_table.id == "historial-sessions-table":
@@ -125,6 +130,13 @@ class HistorialTab(TabPane):
             self._selected_source = source
             self._selected_session_id = session_id
             self._load_ideas_for_session(source, session_id)
+        elif event.data_table.id == "historial-ideas-table":
+            frag = self._current_fragments.get(event.row_key.value)
+            if frag is not None:
+                self.app.push_screen(
+                    FragmentEditModal(frag.source, frag.id, frag.text, frag.category_id),
+                    self._on_fragment_edited,
+                )
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "btn-open-reclassify":
@@ -133,3 +145,7 @@ class HistorialTab(TabPane):
     def _on_reclassify_closed(self, changed: bool | None) -> None:
         if changed:
             self.refresh_data()
+
+    def _on_fragment_edited(self, changed: bool | None) -> None:
+        if changed and self._selected_source is not None and self._selected_session_id is not None:
+            self._load_ideas_for_session(self._selected_source, self._selected_session_id)
