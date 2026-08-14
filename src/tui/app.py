@@ -17,6 +17,7 @@ lógica de cada pantalla.
 
 import logging
 import os
+import sys
 
 from dotenv import load_dotenv
 from textual.app import App, ComposeResult
@@ -135,6 +136,10 @@ class UnifiedApp(App):
 
 
 def main():
+    if len(sys.argv) > 1 and sys.argv[1] == "update":
+        from src.core.updater import run_update
+        return run_update()
+
     init_db()
     bootstrap._preload_models()
     UnifiedApp().run()
