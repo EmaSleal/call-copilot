@@ -9,6 +9,7 @@ Schema:
   call_sessions → sesiones del copiloto de llamadas
 """
 
+import re
 import sqlite3
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -68,6 +69,27 @@ class CallSegment:
     sort_order: int
     text: str
     category_id: Optional[int] = None
+
+
+@dataclass
+class Tool:
+    id: Optional[int]
+    name: str
+    normalized_name: str
+    category: str = ""
+    description: str = ""
+    summary: str = ""
+    tags: str = ""  # JSON-encoded list
+    created_at: str = field(default_factory=lambda: datetime.now().isoformat())
+
+
+@dataclass
+class ToolMention:
+    id: Optional[int]
+    tool_id: int
+    call_session_id: int
+    context_snippet: str = ""
+    created_at: str = field(default_factory=lambda: datetime.now().isoformat())
 
 
 @dataclass
@@ -139,6 +161,25 @@ def init_db() -> None:
             sort_order      INTEGER NOT NULL,
             text            TEXT NOT NULL,
             category_id     INTEGER REFERENCES categories(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS tools (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            name            TEXT NOT NULL,
+            normalized_name TEXT NOT NULL UNIQUE,
+            category        TEXT NOT NULL DEFAULT '',
+            description     TEXT NOT NULL DEFAULT '',
+            summary         TEXT NOT NULL DEFAULT '',
+            tags            TEXT NOT NULL DEFAULT '',
+            created_at      TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS tool_mentions (
+            id               INTEGER PRIMARY KEY AUTOINCREMENT,
+            tool_id          INTEGER NOT NULL REFERENCES tools(id),
+            call_session_id  INTEGER NOT NULL,
+            context_snippet  TEXT NOT NULL DEFAULT '',
+            created_at       TEXT NOT NULL
         );
 
         CREATE VIEW IF NOT EXISTS unified_segments AS
@@ -423,6 +464,80 @@ def get_call_segments(call_session_id: int) -> list[CallSegment]:
             (call_session_id,)
         ).fetchall()
     return [CallSegment(**dict(r)) for r in rows]
+
+
+# ─────────────────────────────────────────────────────────────
+# DAOs — Tools Catalog
+# ─────────────────────────────────────────────────────────────
+
+def normalize_tool_name(name: str) -> str:
+    """Lowercase, strip, collapse internal whitespace, strip trailing punctuation."""
+    s = name.strip().lower()
+    s = re.sub(r"\s+", " ", s)
+    s = re.sub(r"[^\w\s]+$", "", s)
+    return s.strip()
+
+
+def create_tool(t: Tool) -> Tool:
+    """Insert a new Tool row and set its .id."""
+    with _conn() as conn:
+        cur = conn.execute(
+            """INSERT INTO tools (name, normalized_name, category, description, summary, tags, created_at)
+               VALUES (?,?,?,?,?,?,?)""",
+            (t.name, t.normalized_name, t.category, t.description, t.summary, t.tags, t.created_at)
+        )
+        t.id = cur.lastrowid
+    return t
+
+
+def find_tool_by_name(name: str) -> Optional[Tool]:
+    """Look up a Tool by normalized name; returns None on miss."""
+    normalized = normalize_tool_name(name)
+    with _conn() as conn:
+        row = conn.execute(
+            "SELECT * FROM tools WHERE normalized_name=?", (normalized,)
+        ).fetchone()
+    return Tool(**dict(row)) if row else None
+
+
+def get_tools() -> list[Tool]:
+    with _conn() as conn:
+        rows = conn.execute("SELECT * FROM tools ORDER BY name").fetchall()
+    return [Tool(**dict(r)) for r in rows]
+
+
+def get_tools_by_ids(ids: list[int]) -> list[Tool]:
+    """Return Tool rows for the given ids, preserving the caller's order."""
+    if not ids:
+        return []
+    placeholders = ",".join("?" for _ in ids)
+    with _conn() as conn:
+        rows = conn.execute(
+            f"SELECT * FROM tools WHERE id IN ({placeholders})", ids
+        ).fetchall()
+    by_id = {r["id"]: Tool(**dict(r)) for r in rows}
+    return [by_id[i] for i in ids if i in by_id]
+
+
+def save_tool_mention(m: ToolMention) -> int:
+    """Insert a ToolMention row and return its new id. No cap — unlimited retention."""
+    with _conn() as conn:
+        cur = conn.execute(
+            """INSERT INTO tool_mentions (tool_id, call_session_id, context_snippet, created_at)
+               VALUES (?,?,?,?)""",
+            (m.tool_id, m.call_session_id, m.context_snippet, m.created_at)
+        )
+        return cur.lastrowid
+
+
+def get_tool_mentions(tool_id: int) -> list[ToolMention]:
+    """Return all ToolMention rows for a tool, ordered oldest-first. Unbounded."""
+    with _conn() as conn:
+        rows = conn.execute(
+            "SELECT * FROM tool_mentions WHERE tool_id=? ORDER BY id",
+            (tool_id,)
+        ).fetchall()
+    return [ToolMention(**dict(r)) for r in rows]
 
 
 # ─────────────────────────────────────────────────────────────
