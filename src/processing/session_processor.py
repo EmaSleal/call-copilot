@@ -26,6 +26,7 @@ import anthropic
 import openai
 
 from src.db.database import CallSegment, get_categories, save_call_segment
+from src.processing.search_indexer import index_segment
 from src.processing.tool_extractor import ingest_tools
 from src.video.classifier import classify_segments_batch
 
@@ -263,15 +264,18 @@ def process(call_session_id: int, transcript_path: str) -> int:
 
     # Step 8: persist
     saved = 0
+    persisted_segments: list[tuple[int, str]] = []
     for i, (idea, cat_id) in enumerate(zip(ideas, category_ids)):
+        text = idea.get("text", "")
         seg = CallSegment(
             id=None,
             call_session_id=call_session_id,
             sort_order=i,
-            text=idea.get("text", ""),
+            text=text,
             category_id=cat_id,
         )
-        save_call_segment(seg)
+        new_id = save_call_segment(seg)
+        persisted_segments.append((new_id, text))
         saved += 1
 
     logger.info("session %d: %d idea(s) persisted", call_session_id, saved)
@@ -283,5 +287,13 @@ def process(call_session_id: int, transcript_path: str) -> int:
         ingest_tools(call_session_id, spoken_text)
     except Exception as exc:
         logger.error("session %d: tools ingestion failed (%s)", call_session_id, exc)
+
+    # Step 10: semantic search indexing — best-effort, coexists with the
+    # full-text SQL search and must never affect idea persistence either.
+    try:
+        for seg_id, text in persisted_segments:
+            index_segment("call", seg_id, text)
+    except Exception as exc:
+        logger.error("session %d: search indexing failed (%s)", call_session_id, exc)
 
     return saved

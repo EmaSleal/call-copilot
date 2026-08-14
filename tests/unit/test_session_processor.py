@@ -410,7 +410,8 @@ class TestToolsIngestionHook:
             with patch("src.processing.session_processor.classify_segments_batch",
                        return_value=[None]):
                 with patch.object(session_processor, "ingest_tools") as mock_ingest:
-                    session_processor.process(call_session_id, path)
+                    with patch.object(session_processor, "index_segment"):
+                        session_processor.process(call_session_id, path)
 
         mock_ingest.assert_called_once()
         args, _ = mock_ingest.call_args
@@ -436,7 +437,8 @@ class TestToolsIngestionHook:
                        return_value=[None, None]):
                 with patch.object(session_processor, "ingest_tools",
                                   side_effect=Exception("boom")):
-                    result = session_processor.process(call_session_id, path)
+                    with patch.object(session_processor, "index_segment"):
+                        result = session_processor.process(call_session_id, path)
 
         assert result == 2
         segments = patched_db.get_call_segments(call_session_id)
@@ -457,8 +459,9 @@ class TestToolsIngestionHook:
                        return_value=[None]):
                 with patch.object(session_processor, "ingest_tools",
                                   side_effect=Exception("boom")):
-                    with patch.object(session_processor, "logger") as mock_logger:
-                        session_processor.process(call_session_id, path)
+                    with patch.object(session_processor, "index_segment"):
+                        with patch.object(session_processor, "logger") as mock_logger:
+                            session_processor.process(call_session_id, path)
 
         mock_logger.error.assert_called_once()
 
@@ -490,3 +493,99 @@ class TestToolsIngestionHook:
                 session_processor.process(call_session_id, path)
 
         mock_ingest.assert_not_called()
+
+
+class TestSearchIndexingHook:
+    """Coexists with the Tools Catalog ingestion hook — both are best-effort
+    post-persist steps that must never affect idea persistence's return
+    value or count, whichever fails."""
+
+    def _long_transcript(self):
+        return (
+            "We discussed the quarterly roadmap in detail. "
+            "The engineering team reviewed performance bottlenecks. "
+            "Product requirements were clarified for the next sprint. "
+            "Budget allocation was reviewed and approved by the finance team. "
+            "Next steps were assigned to each department lead with deadlines."
+        )
+
+    def test_index_segment_called_once_per_persisted_idea(
+        self, patched_db, call_session_id, transcript_file
+    ):
+        from src.processing import session_processor
+
+        grouper_json = json.dumps({
+            "ideas": [
+                {"title": "T1", "text": "First idea text here."},
+                {"title": "T2", "text": "Second idea text here."},
+            ]
+        })
+        path = transcript_file(self._long_transcript())
+
+        with patch.object(session_processor, "_call_grouper_llm", return_value=grouper_json):
+            with patch("src.processing.session_processor.classify_segments_batch",
+                       return_value=[None, None]):
+                with patch.object(session_processor, "ingest_tools"):
+                    with patch.object(session_processor, "index_segment") as mock_index:
+                        session_processor.process(call_session_id, path)
+
+        assert mock_index.call_count == 2
+        first_call_args = mock_index.call_args_list[0][0]
+        assert first_call_args[0] == "call"
+        assert first_call_args[2] == "First idea text here."
+
+    def test_index_segment_raising_does_not_change_return_value(
+        self, patched_db, call_session_id, transcript_file
+    ):
+        from src.processing import session_processor
+
+        grouper_json = json.dumps({
+            "ideas": [{"title": "T1", "text": "Some idea text here."}]
+        })
+        path = transcript_file(self._long_transcript())
+
+        with patch.object(session_processor, "_call_grouper_llm", return_value=grouper_json):
+            with patch("src.processing.session_processor.classify_segments_batch",
+                       return_value=[None]):
+                with patch.object(session_processor, "ingest_tools"):
+                    with patch.object(session_processor, "index_segment",
+                                      side_effect=Exception("boom")):
+                        result = session_processor.process(call_session_id, path)
+
+        assert result == 1
+        segments = patched_db.get_call_segments(call_session_id)
+        assert len(segments) == 1
+
+    def test_index_segment_raising_logs_error(
+        self, patched_db, call_session_id, transcript_file
+    ):
+        from src.processing import session_processor
+
+        grouper_json = json.dumps({
+            "ideas": [{"title": "T1", "text": "Some idea text here."}]
+        })
+        path = transcript_file(self._long_transcript())
+
+        with patch.object(session_processor, "_call_grouper_llm", return_value=grouper_json):
+            with patch("src.processing.session_processor.classify_segments_batch",
+                       return_value=[None]):
+                with patch.object(session_processor, "ingest_tools"):
+                    with patch.object(session_processor, "index_segment",
+                                      side_effect=Exception("boom")):
+                        with patch.object(session_processor, "logger") as mock_logger:
+                            session_processor.process(call_session_id, path)
+
+        mock_logger.error.assert_called()
+
+    def test_index_segment_not_called_on_short_transcript_early_return(
+        self, patched_db, call_session_id, transcript_file
+    ):
+        from src.processing import session_processor
+
+        path = transcript_file("Too short.")
+
+        with patch.object(session_processor, "_call_grouper_llm"):
+            with patch.object(session_processor, "index_segment") as mock_index:
+                session_processor.process(call_session_id, path)
+
+        mock_index.assert_not_called()

@@ -23,6 +23,7 @@ from src.db.database import (
     Category, Segment, VideoSession,
     create_video_session, get_categories, save_segment, update_session_status,
 )
+from src.processing.search_indexer import index_segment
 from src.video.classifier import classify_segments_batch
 from src.video.report import generate_html_report
 
@@ -104,6 +105,10 @@ def run_pipeline(
             ))
             saved_segments.append(saved)
 
+        # 8.5. Semantic search indexing — best-effort, must never block the
+        # report or the rest of the pipeline.
+        _index_saved_segments(session.id, saved_segments)
+
         # 9. Generar reporte HTML
         progress("Generando reporte HTML...", 0.88)
         html_path = generate_html_report(session, saved_segments, categories, session_dir)
@@ -122,6 +127,16 @@ def run_pipeline(
         raise
 
     return session
+
+
+def _index_saved_segments(session_id: int, segments: list[Segment]) -> None:
+    """Best-effort semantic search indexing — never blocks the report or
+    the rest of the pipeline. Coexists with the full-text SQL search."""
+    try:
+        for seg in segments:
+            index_segment("video", seg.id, seg.text)
+    except Exception as exc:
+        logger.error("search indexing failed for session_id=%d: %s", session_id, exc)
 
 
 # ─────────────────────────────────────────────────────────────
