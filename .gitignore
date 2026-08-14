@@ -12,6 +12,9 @@ example copy.env
 # Whisper generated files
 whisper-text/
 
+# One-off local migration scripts (not part of the shipped codebase)
+scripts/backfill_segments_search.py
+
 # Runtime data (SQLite DB, downloaded videos, reports)
 data/
 
