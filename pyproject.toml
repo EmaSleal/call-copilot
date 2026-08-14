@@ -1,0 +1,53 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "call-copilot"
+version = "0.1.0"
+description = "Live call transcription copilot + YouTube video transcriber — Textual TUI"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "textual>=0.60.0",
+    "python-dotenv>=1.0",
+    "openai>=1.30",
+    "anthropic>=0.41",
+    "websockets>=13.0",
+    "numpy>=1.24",
+    # Required unconditionally by SileroVAD (src/audio/vad_silero.py) — the
+    # only VAD implementation, used on every live call regardless of which
+    # STT/LLM backend is selected. Not a real "extra" today.
+    "torch>=2.0",
+    "torchaudio>=2.0",
+    # WASAPI loopback capture — Windows only (src/audio/wasapi_source.py).
+    # Linux uses PulseAudio via subprocess (src/audio/pulse_source.py), no
+    # PyAudio dependency there.
+    "PyAudioWPatch==0.2.12.7; sys_platform == 'win32'",
+]
+
+[project.optional-dependencies]
+# Local Whisper STT backend (STT_BACKEND=whisper_local) — alternative to the
+# default Deepgram (cloud, already covered by the base `websockets` dep).
+whisper-local = ["faster-whisper>=1.0"]
+# YouTube/video download + batch transcription (Video tab).
+video = ["yt-dlp>=2024.1.0", "openai-whisper>=20231117"]
+# Persistent semantic search: live in-call RAG + the Tools catalog. Lazily
+# imported (src/rag/chroma_store.py, src/rag/tools_store.py) — the app runs
+# fine without it, those features just no-op.
+rag = ["chromadb>=0.5.0"]
+# Named profile bundling every extra above. Listed directly (not as a
+# self-referential "call-copilot[...]" extra) so it resolves the same way
+# for a git install as it does once/if this is ever published to PyPI.
+full = [
+    "faster-whisper>=1.0",
+    "yt-dlp>=2024.1.0",
+    "openai-whisper>=20231117",
+    "chromadb>=0.5.0",
+]
+
+[project.scripts]
+call-copilot = "src.tui.app:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src"]
