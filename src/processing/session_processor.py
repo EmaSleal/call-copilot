@@ -26,6 +26,7 @@ import anthropic
 import openai
 
 from src.db.database import CallSegment, get_categories, save_call_segment
+from src.processing.tool_extractor import ingest_tools
 from src.video.classifier import classify_segments_batch
 
 logger = logging.getLogger("call_copilot.processing.session_processor")
@@ -214,6 +215,7 @@ def process(call_session_id: int, transcript_path: str) -> int:
       6. Skip if ideas list is empty.
       7. Classify ideas via classify_segments_batch.
       8. Persist each idea as a CallSegment row.
+      9. Ingest concrete tools mentioned in the transcript (best-effort, isolated).
 
     Returns:
       Number of ideas persisted (0 if skipped or empty).
@@ -273,4 +275,13 @@ def process(call_session_id: int, transcript_path: str) -> int:
         saved += 1
 
     logger.info("session %d: %d idea(s) persisted", call_session_id, saved)
+
+    # Step 9: Tools Catalog ingestion — best-effort, must never affect idea
+    # persistence. Any failure (extraction, dedup, persistence, or embedding)
+    # is caught and logged here.
+    try:
+        ingest_tools(call_session_id, spoken_text)
+    except Exception as exc:
+        logger.error("session %d: tools ingestion failed (%s)", call_session_id, exc)
+
     return saved
