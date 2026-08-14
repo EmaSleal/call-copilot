@@ -78,7 +78,44 @@ compartida).
 - **RAG opcional** (`src/rag/chroma_store.py`) — ChromaDB + embeddings de
   OpenAI para dar contexto de sesiones pasadas al LLM durante la llamada.
 
-## Setup
+## Instalación
+
+Sin clonar el repo — instala como comando global vía [pipx](https://pipx.pypa.io)
+(el script clona internamente):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/EmaSleal/call-copilot/linux-support/install.sh | sh
+```
+
+Pregunta qué perfil instalar y arma el comando `call-copilot`. Config y
+datos quedan en `~/.call-copilot/`, no en el directorio del repo.
+
+| Perfil | Incluye |
+|---|---|
+| Mínimo (default) | solo llamadas en vivo (Deepgram + GPT/Claude/Ollama) |
+| Completo | + Whisper local (STT), procesamiento de video, catálogo de tools con RAG |
+| A mano | elegís cada extra por separado |
+
+También instalable directo con los extras de `pyproject.toml` (`whisper-local`,
+`video`, `rag`, o `full` para los tres):
+
+```bash
+pipx install "call-copilot[whisper-local,video,rag] @ git+https://github.com/EmaSleal/call-copilot.git@linux-support"
+```
+
+### Comandos
+
+| Comando | Qué hace |
+|---|---|
+| `call-copilot` | arranca la TUI |
+| `call-copilot --help` | lista los comandos (`-h` / `help` también andan) |
+| `call-copilot version` | versión y commit instalado |
+| `call-copilot check-update` | avisa si hay una versión nueva, sin instalarla |
+| `call-copilot update` | instala la última versión |
+| `call-copilot doctor` | diagnóstico: pipx, Python, extras opcionales, GPU/CUDA |
+| `call-copilot uninstall` | desinstala (config/datos en `~/.call-copilot` quedan) |
+
+## Setup (desde el repo, para desarrollo)
 
 ```bash
 pip install -r requirements.txt
@@ -106,7 +143,9 @@ python main.py
 
 ## Base de datos
 
-SQLite en `data/app.db` (`src/db/database.py`). Cinco tablas —
+SQLite en `data/app.db` corriendo desde el repo, o `~/.call-copilot/data/app.db`
+si instalaste vía pipx/`install.sh` (`src/core/paths.py` resuelve cuál según
+si hay un checkout de git al lado del código corriendo). Cinco tablas —
 `categories`, `video_sessions`, `segments`, `call_sessions`,
 `call_segments` — más dos vistas de solo lectura (`unified_segments`,
 `unified_sessions`) que unifican video y llamadas para el tab Historial.
