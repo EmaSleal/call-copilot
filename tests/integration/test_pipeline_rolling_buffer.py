@@ -56,6 +56,7 @@ def _build_pipeline(min_words: int = 1) -> tuple[CallCopilotPipeline, FakeLLM]:
         initial_context="",
         min_substantial_words=min_words,
         active_profile=None,
+        cooldown_seconds=0.0,
     )
     return pipeline, fake_llm
 

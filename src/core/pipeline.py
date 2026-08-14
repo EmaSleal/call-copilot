@@ -6,7 +6,9 @@ Claude/GPT sean intercambiables vía config sin tocar esta clase.
 """
 
 import asyncio
+import difflib
 import logging
+import time
 from collections import deque
 from typing import Callable, Optional
 
@@ -68,6 +70,11 @@ _META_RESPONSES = frozenset({
 })
 
 
+def _similarity_ratio(a: str, b: str) -> float:
+    """Cheap local text-similarity ratio (0..1), no embeddings/API calls."""
+    return difflib.SequenceMatcher(None, a, b).ratio()
+
+
 class CallCopilotPipeline:
     def __init__(
         self,
@@ -83,6 +90,8 @@ class CallCopilotPipeline:
         min_substantial_words: int = 40,
         openai_client: AsyncOpenAI | None = None,
         active_profile: CallProfile | None = None,
+        cooldown_seconds: float = 6.0,
+        dedup_threshold: float = 0.82,
     ):
         self.audio_source = audio_source
         self.vad = vad
@@ -96,6 +105,14 @@ class CallCopilotPipeline:
         self.on_segment = on_segment
         self._min_substantial_words = min_substantial_words
         self._openai_client = openai_client
+        # Repetition guard: paced meetings re-trigger the inactivity timer on
+        # every short pause inside the same still-unfinished idea, so a flat
+        # cooldown + a last-block similarity check keep near-duplicate blocks
+        # from reaching the LLM twice.
+        self._cooldown_seconds = cooldown_seconds
+        self._dedup_threshold = dedup_threshold
+        self._last_trigger_at: float = 0.0
+        self._last_block_text: str = ""
         # Active profile is snapshotted at call start (no live reload).
         # To change profiles mid-call the caller must create a new pipeline instance.
         self._active_profile: CallProfile | None = active_profile
@@ -189,6 +206,22 @@ class CallCopilotPipeline:
     def _block_word_count(self) -> int:
         return len(" ".join(self._current_block).split())
 
+    def _schedule_retry(self, delay: float) -> None:
+        """Re-fire _handle_trigger after `delay`s without waiting on new
+        segments — used when a block is ready but still inside the cooldown
+        window, so it isn't silently dropped if the speaker stays quiet."""
+        if self._inactivity_task:
+            self._inactivity_task.cancel()
+
+        async def _retry() -> None:
+            try:
+                await asyncio.sleep(delay)
+                await self._handle_trigger()
+            except asyncio.CancelledError:
+                pass
+
+        self._inactivity_task = asyncio.create_task(_retry())
+
     async def _handle_trigger(self) -> None:
         word_count = self._block_word_count()
         if word_count < self._min_substantial_words:
@@ -196,7 +229,26 @@ class CallCopilotPipeline:
             return
 
         block_text = " ".join(self._current_block)
+
+        elapsed = time.monotonic() - self._last_trigger_at
+        if self._cooldown_seconds > 0 and elapsed < self._cooldown_seconds:
+            remaining = self._cooldown_seconds - elapsed
+            logger.debug("cooldown activo (%.1fs restantes), reintentando más tarde", remaining)
+            self._schedule_retry(remaining)
+            return
+
+        if self._last_block_text:
+            ratio = _similarity_ratio(block_text, self._last_block_text)
+            if ratio >= self._dedup_threshold:
+                logger.debug(
+                    "bloque %.0f%% similar al anterior, se descarta sin llamar al LLM", ratio * 100
+                )
+                self._current_block = []
+                return
+
         self._current_block = []
+        self._last_trigger_at = time.monotonic()
+        self._last_block_text = block_text
 
         if self._rag:
             relevant = await self._rag.search(query=block_text, top_k=5)

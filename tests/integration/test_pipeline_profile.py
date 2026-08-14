@@ -179,6 +179,7 @@ def _build_pipeline(profile: CallProfile, min_words: int = 5) -> tuple[CallCopil
         initial_context="",
         min_substantial_words=min_words,
         active_profile=profile,
+        cooldown_seconds=0.0,
     )
     return pipeline, fake_llm, fake_output
 
@@ -568,3 +569,111 @@ class TestPipelineSilentModeMetaResponseFilter:
         # copilot mode streams directly — no meta-filter, so "No respondas." IS emitted
         assert len(fake_output.emissions) == 1
         assert fake_output.emissions[0].text == "No respondas."
+
+
+# ── Cooldown + near-duplicate dedup ─────────────────────────────────────────
+
+def _build_pipeline_with_guard(
+    cooldown_seconds: float = 0.0, dedup_threshold: float = 2.0, min_words: int = 1
+) -> tuple[CallCopilotPipeline, FakeLLM]:
+    """PERMISSIVE_PROFILE pipeline exposing the repetition-guard knobs.
+    dedup_threshold defaults above 1.0 (max possible ratio) to disable it
+    when a test only cares about the cooldown, and vice-versa."""
+    fake_llm = FakeLLM()
+    pipeline = CallCopilotPipeline(
+        audio_source=MagicMock(),
+        vad=MagicMock(),
+        stt=MagicMock(),
+        trigger=MagicMock(),
+        llm=fake_llm,
+        output=FakeOutput(),
+        llm_enabled=True,
+        initial_context="",
+        min_substantial_words=min_words,
+        active_profile=PERMISSIVE_PROFILE,
+        cooldown_seconds=cooldown_seconds,
+        dedup_threshold=dedup_threshold,
+    )
+    return pipeline, fake_llm
+
+
+class TestPipelineCooldown:
+    def test_second_trigger_within_cooldown_is_deferred(self):
+        """A block ready right after a previous trigger does NOT call the LLM
+        again — it stays queued instead of being answered immediately."""
+        pipeline, fake_llm = _build_pipeline_with_guard(cooldown_seconds=5.0)
+        _set_block(pipeline, "¿Cómo funciona el protocolo TCP en detalle?")
+        asyncio.run(pipeline._handle_trigger())
+        assert len(fake_llm.calls) == 1
+
+        _set_block(pipeline, "¿Y cómo se compara con UDP en este caso?")
+        asyncio.run(pipeline._handle_trigger())
+        assert len(fake_llm.calls) == 1  # still 1 — deferred by the cooldown
+
+    def test_deferred_block_is_not_lost(self):
+        """A block deferred by the cooldown keeps accumulating instead of
+        being cleared, so its content isn't silently dropped."""
+        pipeline, fake_llm = _build_pipeline_with_guard(cooldown_seconds=5.0)
+        _set_block(pipeline, "¿Cómo funciona el protocolo TCP en detalle?")
+        asyncio.run(pipeline._handle_trigger())
+
+        _set_block(pipeline, "¿Y cómo se compara con UDP en este caso?")
+        asyncio.run(pipeline._handle_trigger())
+        assert pipeline._current_block != []
+
+    def test_trigger_after_cooldown_elapsed_calls_llm(self):
+        """Once the cooldown window has passed, a new block is answered normally."""
+        pipeline, fake_llm = _build_pipeline_with_guard(cooldown_seconds=5.0)
+        _set_block(pipeline, "¿Cómo funciona el protocolo TCP en detalle?")
+        asyncio.run(pipeline._handle_trigger())
+
+        # Simulate the cooldown window having already elapsed.
+        pipeline._last_trigger_at -= 10.0
+        _set_block(pipeline, "¿Y cómo se compara con UDP en este caso?")
+        asyncio.run(pipeline._handle_trigger())
+        assert len(fake_llm.calls) == 2
+
+    def test_zero_cooldown_disables_the_guard(self):
+        """cooldown_seconds=0.0 (used by other test suites) never defers."""
+        pipeline, fake_llm = _build_pipeline_with_guard(cooldown_seconds=0.0)
+        _set_block(pipeline, "¿Cómo funciona el protocolo TCP en detalle?")
+        asyncio.run(pipeline._handle_trigger())
+        _set_block(pipeline, "¿Y cómo se compara con UDP en este caso?")
+        asyncio.run(pipeline._handle_trigger())
+        assert len(fake_llm.calls) == 2
+
+
+class TestPipelineDedup:
+    def test_near_identical_block_is_discarded(self):
+        """A block that's essentially a repeat of the last one answered is
+        NOT sent to the LLM again."""
+        pipeline, fake_llm = _build_pipeline_with_guard(dedup_threshold=0.82)
+        _set_block(pipeline, "¿Cómo funciona la autenticación OAuth en producción?")
+        asyncio.run(pipeline._handle_trigger())
+        assert len(fake_llm.calls) == 1
+
+        # Same question, paraphrased — high textual overlap with the last block.
+        _set_block(pipeline, "¿Cómo funciona la autenticación OAuth en producción hoy?")
+        asyncio.run(pipeline._handle_trigger())
+        assert len(fake_llm.calls) == 1  # discarded, not sent again
+
+    def test_discarded_block_clears_the_buffer(self):
+        """A discarded near-duplicate block does not linger and get re-merged
+        into the next real question."""
+        pipeline, fake_llm = _build_pipeline_with_guard(dedup_threshold=0.82)
+        _set_block(pipeline, "¿Cómo funciona la autenticación OAuth en producción?")
+        asyncio.run(pipeline._handle_trigger())
+
+        _set_block(pipeline, "¿Cómo funciona la autenticación OAuth en producción hoy?")
+        asyncio.run(pipeline._handle_trigger())
+        assert pipeline._current_block == []
+
+    def test_different_block_still_calls_llm(self):
+        """A genuinely different question is never suppressed by the dedup guard."""
+        pipeline, fake_llm = _build_pipeline_with_guard(dedup_threshold=0.82)
+        _set_block(pipeline, "¿Cómo funciona la autenticación OAuth en producción?")
+        asyncio.run(pipeline._handle_trigger())
+
+        _set_block(pipeline, "¿Cuál es la estrategia de rollback si falla el deploy?")
+        asyncio.run(pipeline._handle_trigger())
+        assert len(fake_llm.calls) == 2
