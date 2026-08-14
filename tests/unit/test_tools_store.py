@@ -98,6 +98,19 @@ class TestAddTool:
 
 class TestSearch:
     @pytest.mark.asyncio
+    async def test_search_without_openai_client_returns_empty_list(
+        self, mock_chromadb, mock_collection
+    ):
+        from src.rag.tools_store import ToolsCatalogStore
+
+        mock_collection.count.return_value = 5
+        store = ToolsCatalogStore(openai_client=None)
+
+        results = await store.search("vector database")
+
+        assert results == []
+
+    @pytest.mark.asyncio
     async def test_search_returns_tool_ids_ranked_from_chroma_result(
         self, mock_chromadb, mock_collection, mock_openai_client
     ):

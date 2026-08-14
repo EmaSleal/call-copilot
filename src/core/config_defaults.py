@@ -15,6 +15,7 @@ alcance de este módulo (ver Non-Goals del diseño de config-settings-panel).
 
 import os
 from enum import Enum
+from pathlib import Path
 
 DEFAULT_LLM_BACKEND = "gpt"
 DEFAULT_STT_BACKEND = "deepgram"
@@ -84,6 +85,13 @@ def whisper_model_video() -> str:
     """
     value = os.getenv("WHISPER_MODEL_VIDEO") or os.getenv("WHISPER_MODEL")
     return value or DEFAULT_WHISPER_MODEL_VIDEO
+
+
+def tech_scout_db_path() -> str:
+    """Path to tech-scout's tools.db, source for the Settings 'sync' action.
+    Default assumes tech-scout's own default layout on this machine."""
+    default = str(Path.home() / ".hermes" / "tech-scout" / "tools.db")
+    return _getenv_or_default("TECH_SCOUT_DB_PATH", default)
 
 
 def silence_threshold_ms() -> int:

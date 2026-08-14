@@ -24,6 +24,7 @@ from src.core.config_defaults import (
     whisper_model_video,
     silence_threshold_ms,
     scope_of,
+    tech_scout_db_path,
 )
 
 
@@ -161,6 +162,20 @@ class TestScopeOf:
         assert RESTART_KEYS == {"STT_BACKEND", "WHISPER_MODEL_CALL", "SILENCE_THRESHOLD_MS"}
         for key in RESTART_KEYS:
             assert scope_of(key) == Scope.RESTART
+
+
+class TestTechScoutDbPath:
+    def test_defaults_to_hermes_layout_when_unset(self, monkeypatch):
+        monkeypatch.delenv("TECH_SCOUT_DB_PATH", raising=False)
+        assert tech_scout_db_path().endswith(".hermes/tech-scout/tools.db")
+
+    def test_empty_string_counts_as_unset(self, monkeypatch):
+        monkeypatch.setenv("TECH_SCOUT_DB_PATH", "")
+        assert tech_scout_db_path().endswith(".hermes/tech-scout/tools.db")
+
+    def test_honors_explicit_value(self, monkeypatch):
+        monkeypatch.setenv("TECH_SCOUT_DB_PATH", "/custom/path/tools.db")
+        assert tech_scout_db_path() == "/custom/path/tools.db"
 
 
 class TestProviderWiring:

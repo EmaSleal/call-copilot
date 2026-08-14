@@ -13,6 +13,7 @@ import pytest
 
 from src.tui.screens.settings import (
     validate_settings_form, diff_changed_keys, summarize_scopes, key_to_provider,
+    format_sync_feedback,
 )
 from src.core.config_defaults import WHISPER_SIZES
 
@@ -159,3 +160,18 @@ class TestKeyToProvider:
 
     def test_unrelated_key_has_no_catalog_provider(self):
         assert key_to_provider("LLM_BACKEND") is None
+
+
+# ---------------------------------------------------------------------------
+# format_sync_feedback() — "Sincronizar tech-scout" button feedback text
+# ---------------------------------------------------------------------------
+
+class TestFormatSyncFeedback:
+    def test_reports_imported_and_skipped_counts(self):
+        msg = format_sync_feedback(3, 1)
+        assert "3" in msg
+        assert "1" in msg
+
+    def test_zero_imported_and_zero_skipped_still_reports_success(self):
+        msg = format_sync_feedback(0, 0)
+        assert "0" in msg
