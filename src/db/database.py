@@ -378,6 +378,16 @@ def get_segments_by_category(session_id: int, category_id: Optional[int]) -> lis
     return [Segment(**dict(r)) for r in rows]
 
 
+def get_segments_by_category_global(category_id: int) -> list[Segment]:
+    """All Segment rows in this category across every video session (not
+    scoped to one session) — used by Historial's global reclassify tool."""
+    with _conn() as conn:
+        rows = conn.execute(
+            "SELECT * FROM segments WHERE category_id=?", (category_id,)
+        ).fetchall()
+    return [Segment(**dict(r)) for r in rows]
+
+
 def get_segments_by_ids(ids: list[int]) -> list[Segment]:
     """Return Segment rows for the given ids, preserving the caller's order."""
     if not ids:
@@ -478,6 +488,25 @@ def get_call_segments(call_session_id: int) -> list[CallSegment]:
             (call_session_id,)
         ).fetchall()
     return [CallSegment(**dict(r)) for r in rows]
+
+
+def get_call_segments_by_category_global(category_id: int) -> list[CallSegment]:
+    """All CallSegment rows in this category across every call session (not
+    scoped to one session) — used by Historial's global reclassify tool."""
+    with _conn() as conn:
+        rows = conn.execute(
+            "SELECT * FROM call_segments WHERE category_id=?", (category_id,)
+        ).fetchall()
+    return [CallSegment(**dict(r)) for r in rows]
+
+
+def update_call_segment_category(segment_id: int, category_id: int) -> None:
+    """Reassign a single call segment's category (used by post-hoc reclassification)."""
+    with _conn() as conn:
+        conn.execute(
+            "UPDATE call_segments SET category_id=? WHERE id=?",
+            (category_id, segment_id)
+        )
 
 
 def get_call_segments_by_ids(ids: list[int]) -> list[CallSegment]:
