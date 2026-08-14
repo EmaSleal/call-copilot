@@ -23,7 +23,7 @@ concretas — la elección de provider concreto vive en `src/tui/bootstrap.py`
 
 ### La TUI (`src/tui/app.py`) — uso normal
 
-Cinco tabs, todas sobre la misma base de datos:
+Seis tabs, todas sobre la misma base de datos:
 
 | Tab | Qué hace |
 |---|---|
@@ -32,11 +32,13 @@ Cinco tabs, todas sobre la misma base de datos:
 | **[3] Buscar** | Full-text search sobre los segmentos ya clasificados. |
 | **[4] Categorías** | CRUD de la taxonomía compartida entre video y llamadas. |
 | **[5] Historial** | Sesiones de video y de llamada unificadas (vista `unified_sessions`/`unified_segments` en SQLite), con columna de origen. |
+| **[6] Tools** | Catálogo de tecnologías/herramientas mencionadas en las llamadas, extraídas automáticamente post-sesión (`src/processing/tool_extractor.py`). Lista todo por default; búsqueda semántica (RAG) si hay `OPENAI_API_KEY` configurada. |
 
 `Ctrl+S` abre el panel de **Configuración** (modal) desde cualquier tab:
 proveedor LLM/STT en tiempo real, API keys (OpenAI/Anthropic/Deepgram),
-tamaño de modelo Whisper por uso, y el umbral de silencio del VAD — todo
-persistido directo a `.env`.
+tamaño de modelo Whisper por uso, el umbral de silencio del VAD, y un botón
+para importar el catálogo de Tools desde una base externa (tech-scout, un
+proyecto personal separado) — todo persistido directo a `.env`.
 
 ### `main.py` — modo alternativo sin TUI
 
@@ -145,12 +147,15 @@ python main.py
 
 SQLite en `data/app.db` corriendo desde el repo, o `~/.call-copilot/data/app.db`
 si instalaste vía pipx/`install.sh` (`src/core/paths.py` resuelve cuál según
-si hay un checkout de git al lado del código corriendo). Cinco tablas —
+si hay un checkout de git al lado del código corriendo). Siete tablas —
 `categories`, `video_sessions`, `segments`, `call_sessions`,
-`call_segments` — más dos vistas de solo lectura (`unified_segments`,
-`unified_sessions`) que unifican video y llamadas para el tab Historial.
-`categories` es la única taxonomía realmente compartida entre ambos flujos;
-`video_sessions` y `call_sessions` son secuencias de id independientes.
+`call_segments`, `tools`, `tool_mentions` — más dos vistas de solo lectura
+(`unified_segments`, `unified_sessions`) que unifican video y llamadas para
+el tab Historial. `categories` es la única taxonomía realmente compartida
+entre video y llamadas; `video_sessions` y `call_sessions` son secuencias de
+id independientes. `tools`/`tool_mentions` alimentan el tab Tools — un tool
+mencionado en varias llamadas es una sola fila en `tools` con una
+`tool_mention` por cada mención (nunca se pisa el enriquecimiento del LLM).
 
 ## Pendiente / próximos pasos
 
