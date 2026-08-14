@@ -378,6 +378,19 @@ def get_segments_by_category(session_id: int, category_id: Optional[int]) -> lis
     return [Segment(**dict(r)) for r in rows]
 
 
+def get_segments_by_ids(ids: list[int]) -> list[Segment]:
+    """Return Segment rows for the given ids, preserving the caller's order."""
+    if not ids:
+        return []
+    placeholders = ",".join("?" for _ in ids)
+    with _conn() as conn:
+        rows = conn.execute(
+            f"SELECT * FROM segments WHERE id IN ({placeholders})", ids
+        ).fetchall()
+    by_id = {r["id"]: Segment(**dict(r)) for r in rows}
+    return [by_id[i] for i in ids if i in by_id]
+
+
 def search_segments(query: str, category_id: int = None) -> list[dict]:
     """Búsqueda de texto en segmentos, con join a sesión y categoría."""
     with _conn() as conn:
@@ -465,6 +478,19 @@ def get_call_segments(call_session_id: int) -> list[CallSegment]:
             (call_session_id,)
         ).fetchall()
     return [CallSegment(**dict(r)) for r in rows]
+
+
+def get_call_segments_by_ids(ids: list[int]) -> list[CallSegment]:
+    """Return CallSegment rows for the given ids, preserving the caller's order."""
+    if not ids:
+        return []
+    placeholders = ",".join("?" for _ in ids)
+    with _conn() as conn:
+        rows = conn.execute(
+            f"SELECT * FROM call_segments WHERE id IN ({placeholders})", ids
+        ).fetchall()
+    by_id = {r["id"]: CallSegment(**dict(r)) for r in rows}
+    return [by_id[i] for i in ids if i in by_id]
 
 
 # ─────────────────────────────────────────────────────────────

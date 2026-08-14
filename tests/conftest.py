@@ -39,6 +39,10 @@ for _name in ["torch", "torchaudio", "torchaudio.transforms"]:
 if "faster_whisper" not in sys.modules:
     _mock_module("faster_whisper")
 
+# ── whisper (openai-whisper, used by src/video/pipeline.py) ───────────────────
+if "whisper" not in sys.modules:
+    _mock_module("whisper")
+
 # ── textual ───────────────────────────────────────────────────────────────────
 for _name in [
     "textual",
