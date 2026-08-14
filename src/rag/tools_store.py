@@ -1,25 +1,39 @@
-import chromadb
+import logging
+
 from openai import AsyncOpenAI
+
+logger = logging.getLogger("call_copilot.rag.tools_store")
 
 
 class ToolsCatalogStore:
-    """Chroma-backed semantic store for the Tools Catalog, keyed by SQLite tool id."""
+    """Chroma-backed semantic store for the Tools Catalog, keyed by SQLite tool id.
+
+    chromadb is imported lazily so the app can start (and post-call
+    extraction/persistence can run) even when it isn't installed — matches
+    the other soft-dependency guards in this codebase (OpenAI-optional
+    embedding)."""
 
     EMBED_MODEL = "text-embedding-3-small"
     COLLECTION = "tools_catalog"
 
     def __init__(self, openai_client: AsyncOpenAI | None, persist_dir: str = "data/chroma"):
-        self._client = chromadb.PersistentClient(path=persist_dir)
-        self._collection = self._client.get_or_create_collection(
+        self._openai = openai_client
+        self._collection = None
+        try:
+            import chromadb
+        except ImportError:
+            logger.warning("chromadb no está instalado — Tools Catalog (búsqueda semántica) deshabilitado.")
+            return
+        client = chromadb.PersistentClient(path=persist_dir)
+        self._collection = client.get_or_create_collection(
             name=self.COLLECTION,
             metadata={"hnsw:space": "cosine"},
         )
-        self._openai = openai_client
 
     async def add_tool(self, tool_id: int, embedding_text: str) -> bool:
         """Upsert a tool's embedding, keyed by str(tool_id). Returns False (no-op) without
-        an OpenAI client — never raises."""
-        if not self._openai:
+        an OpenAI client or chromadb — never raises."""
+        if not self._openai or self._collection is None:
             return False
         embedding = await self._embed(embedding_text)
         self._collection.upsert(
@@ -30,7 +44,7 @@ class ToolsCatalogStore:
         return True
 
     async def search(self, query: str, top_k: int = 5) -> list[tuple[int, float]]:
-        if not query.strip() or not self._openai:
+        if not query.strip() or not self._openai or self._collection is None:
             return []
         count = self._collection.count()
         if count == 0:

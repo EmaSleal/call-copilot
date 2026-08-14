@@ -16,6 +16,7 @@ Authoritative design (sdd/tools-catalog):
 chromadb and openai are stubbed as MagicMock modules in tests/conftest.py.
 """
 
+import sys
 from unittest.mock import MagicMock, AsyncMock
 import pytest
 
@@ -29,13 +30,14 @@ def mock_collection():
 
 @pytest.fixture
 def mock_chromadb(monkeypatch, mock_collection):
-    """Patch chromadb.PersistentClient used inside src.rag.tools_store."""
-    import src.rag.tools_store as tools_store_module
-
+    """Patch chromadb.PersistentClient. chromadb is imported lazily inside
+    ToolsCatalogStore.__init__ (so the app can start without it installed),
+    so we patch the cached module object in sys.modules directly — any
+    `import chromadb` inside __init__ resolves to this same object."""
     mock_client = MagicMock()
     mock_client.get_or_create_collection.return_value = mock_collection
     mock_persistent_client_cls = MagicMock(return_value=mock_client)
-    monkeypatch.setattr(tools_store_module.chromadb, "PersistentClient", mock_persistent_client_cls)
+    monkeypatch.setattr(sys.modules["chromadb"], "PersistentClient", mock_persistent_client_cls)
     return mock_client
 
 
@@ -136,6 +138,42 @@ class TestSearch:
         mock_collection.count.return_value = 0
 
         store = ToolsCatalogStore(openai_client=mock_openai_client)
+        results = await store.search("vector database")
+
+        assert results == []
+
+
+# ─────────────────────────────────────────────────────────────
+# chromadb genuinely not installed — lazy import degrades gracefully
+# instead of crashing app startup (only faster-whisper/torch were
+# optional before; chromadb was a hard unconditional import).
+# ─────────────────────────────────────────────────────────────
+
+class TestToolsCatalogStoreWithoutChromadb:
+    def test_construction_does_not_raise_without_chromadb(self, monkeypatch):
+        from src.rag.tools_store import ToolsCatalogStore
+
+        monkeypatch.setitem(sys.modules, "chromadb", None)  # forces ImportError
+        ToolsCatalogStore(openai_client=None)  # must not raise
+
+    @pytest.mark.asyncio
+    async def test_add_tool_without_chromadb_returns_false(self, monkeypatch, mock_openai_client):
+        from src.rag.tools_store import ToolsCatalogStore
+
+        monkeypatch.setitem(sys.modules, "chromadb", None)
+        store = ToolsCatalogStore(openai_client=mock_openai_client)
+
+        result = await store.add_tool(tool_id=1, embedding_text="Chroma.")
+
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_search_without_chromadb_returns_empty_list(self, monkeypatch, mock_openai_client):
+        from src.rag.tools_store import ToolsCatalogStore
+
+        monkeypatch.setitem(sys.modules, "chromadb", None)
+        store = ToolsCatalogStore(openai_client=mock_openai_client)
+
         results = await store.search("vector database")
 
         assert results == []
