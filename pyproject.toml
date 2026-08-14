@@ -20,6 +20,11 @@ dependencies = [
     # STT/LLM backend is selected. Not a real "extra" today.
     "torch>=2.0",
     "torchaudio>=2.0",
+    # torch.hub's cached snakers4/silero-vad repo imports this directly — not
+    # pulled in transitively unless something else in the environment already
+    # depends on it (pytest/onnxruntime do in dev, which is exactly why this
+    # was missing: a clean minimal-profile install has neither).
+    "packaging>=23.0",
     # WASAPI loopback capture — Windows only (src/audio/wasapi_source.py).
     # Linux uses PulseAudio via subprocess (src/audio/pulse_source.py), no
     # PyAudio dependency there.
