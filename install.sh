@@ -84,7 +84,12 @@ fi
 
 echo
 echo "Instalando: $SPEC"
-pipx install --force "$SPEC"
+# uninstall-then-install rather than `pipx install --force` — pipx's
+# uv-backed venv creation refuses to clear a venv from a prior session on
+# some setups, so --force fails outright there. Uninstalling a package
+# that isn't installed yet (first run) exits nonzero — expected, ignored.
+pipx uninstall call-copilot || true
+pipx install "$SPEC"
 
 mkdir -p "$APP_HOME"
 echo "$EXTRAS" > "$APP_HOME/install-profile"

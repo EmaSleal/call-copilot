@@ -32,11 +32,17 @@ def build_pip_spec(extras: str) -> str:
 
 
 def run_update() -> int:
+    """Uninstall-then-install rather than `pipx install --force` — pipx's
+    uv-backed venv creation refuses to clear a venv from a prior session,
+    so --force fails outright on some setups. `pipx uninstall` on a
+    not-yet-installed package returns nonzero; that's expected on a first
+    run and must not block the install that follows."""
     extras = read_install_profile()
     spec = build_pip_spec(extras)
     print(f"Actualizando call-copilot ({extras or 'sin extras'})...")
     try:
-        result = subprocess.run(["pipx", "install", "--force", spec])
+        subprocess.run(["pipx", "uninstall", "call-copilot"])
+        result = subprocess.run(["pipx", "install", spec])
     except FileNotFoundError:
         print("pipx no está instalado — no se puede actualizar. Volvé a correr install.sh.")
         return 1
