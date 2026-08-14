@@ -13,6 +13,7 @@ boot headlessly, so only Textual-free logic is unit-tested directly.
 """
 
 import os
+import sqlite3
 
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
@@ -77,6 +78,11 @@ def key_to_provider(env_key: str) -> str | None:
     id whose cache must be invalidated (design decision 6). Returns None for
     keys with no corresponding discovery provider (e.g. DEEPGRAM_API_KEY)."""
     return _KEY_ENV_TO_CATALOG_PROVIDER.get(env_key)
+
+
+def format_sync_feedback(imported: int, skipped: int) -> str:
+    """Feedback text for the 'Sincronizar tech-scout' button."""
+    return f"Sincronizado. {imported} nuevas, {skipped} ya existían."
 
 
 class SettingsScreen(ModalScreen):
@@ -167,6 +173,14 @@ class SettingsScreen(ModalScreen):
                     value=config_defaults.whisper_model_video(),
                 )
                 yield Button("Guardar", id="btn-settings-save", variant="primary")
+                yield Label("Tech Scout — ruta a tools.db:")
+                yield Input(
+                    id="settings-tech-scout-path",
+                    value=config_defaults.tech_scout_db_path(),
+                )
+                yield Button(
+                    "Sincronizar tech-scout", id="btn-settings-sync-tools", variant="default"
+                )
             yield Label("", id="settings-feedback")
 
     def on_mount(self) -> None:
@@ -182,6 +196,8 @@ class SettingsScreen(ModalScreen):
             self._save()
         elif event.button.id == "btn-settings-close":
             self.dismiss(None)
+        elif event.button.id == "btn-settings-sync-tools":
+            self._sync_tech_scout()
 
     def _save(self) -> None:
         from src.core import env_store
@@ -238,3 +254,28 @@ class SettingsScreen(ModalScreen):
         badges = summarize_scopes(changed.keys())
         summary = "; ".join(f"{k}: {v}" for k, v in badges.items())
         fb.update(f"[green]Guardado.[/green] {summary}")
+
+    def _sync_tech_scout(self) -> None:
+        from src.core import env_store
+        from src.processing.tool_extractor import import_from_tech_scout
+
+        fb = self.query_one("#settings-feedback", Label)
+        path = self.query_one("#settings-tech-scout-path", Input).value.strip()
+        if not path:
+            fb.update("[red]Ruta vacía.[/red]")
+            return
+
+        try:
+            imported, skipped = import_from_tech_scout(path)
+        except (OSError, sqlite3.Error):
+            # Never interpolate the exception into the message — same
+            # rationale as _save()'s OSError handling.
+            fb.update("[red]No se pudo sincronizar con tech-scout.[/red]")
+            return
+
+        try:
+            env_store.write_values({"TECH_SCOUT_DB_PATH": path})
+        except OSError:
+            pass  # sync already succeeded; remembering the path is secondary
+
+        fb.update(f"[green]{format_sync_feedback(imported, skipped)}[/green]")

@@ -379,3 +379,114 @@ class TestTranscriptStripping:
             session_processor.process(call_session_id, path)
 
         mock_llm.assert_called_once()
+
+
+# ─────────────────────────────────────────────────────────────
+# Phase 10 — Tools Catalog ingestion hook (PR2)
+# ─────────────────────────────────────────────────────────────
+
+class TestToolsIngestionHook:
+    def _long_transcript(self):
+        return (
+            "We discussed the quarterly roadmap in detail. "
+            "The engineering team reviewed performance bottlenecks. "
+            "Product requirements were clarified for the next sprint. "
+            "Budget allocation was reviewed and approved by the finance team. "
+            "Next steps were assigned to each department lead with deadlines."
+        )
+
+    def test_ingest_tools_called_once_after_idea_persistence(
+        self, patched_db, call_session_id, transcript_file
+    ):
+        """ingest_tools() must be invoked exactly once, with (call_session_id, spoken_text)."""
+        from src.processing import session_processor
+
+        grouper_json = json.dumps({
+            "ideas": [{"title": "T1", "text": "Some idea text here."}]
+        })
+        path = transcript_file(self._long_transcript())
+
+        with patch.object(session_processor, "_call_grouper_llm", return_value=grouper_json):
+            with patch("src.processing.session_processor.classify_segments_batch",
+                       return_value=[None]):
+                with patch.object(session_processor, "ingest_tools") as mock_ingest:
+                    session_processor.process(call_session_id, path)
+
+        mock_ingest.assert_called_once()
+        args, _ = mock_ingest.call_args
+        assert args[0] == call_session_id
+
+    def test_ingest_tools_raising_does_not_change_return_value(
+        self, patched_db, call_session_id, transcript_file
+    ):
+        """A raising ingest_tools() must leave process()'s return value/idea count unchanged,
+        and must not propagate the exception."""
+        from src.processing import session_processor
+
+        grouper_json = json.dumps({
+            "ideas": [
+                {"title": "T1", "text": "First idea text here."},
+                {"title": "T2", "text": "Second idea text here."},
+            ]
+        })
+        path = transcript_file(self._long_transcript())
+
+        with patch.object(session_processor, "_call_grouper_llm", return_value=grouper_json):
+            with patch("src.processing.session_processor.classify_segments_batch",
+                       return_value=[None, None]):
+                with patch.object(session_processor, "ingest_tools",
+                                  side_effect=Exception("boom")):
+                    result = session_processor.process(call_session_id, path)
+
+        assert result == 2
+        segments = patched_db.get_call_segments(call_session_id)
+        assert len(segments) == 2
+
+    def test_ingest_tools_raising_logs_error(
+        self, patched_db, call_session_id, transcript_file
+    ):
+        from src.processing import session_processor
+
+        grouper_json = json.dumps({
+            "ideas": [{"title": "T1", "text": "Some idea text here."}]
+        })
+        path = transcript_file(self._long_transcript())
+
+        with patch.object(session_processor, "_call_grouper_llm", return_value=grouper_json):
+            with patch("src.processing.session_processor.classify_segments_batch",
+                       return_value=[None]):
+                with patch.object(session_processor, "ingest_tools",
+                                  side_effect=Exception("boom")):
+                    with patch.object(session_processor, "logger") as mock_logger:
+                        session_processor.process(call_session_id, path)
+
+        mock_logger.error.assert_called_once()
+
+    def test_ingest_tools_not_called_on_short_transcript_early_return(
+        self, patched_db, call_session_id, transcript_file
+    ):
+        """Early-return path (transcript too short) must not invoke ingest_tools."""
+        from src.processing import session_processor
+
+        path = transcript_file("Too short.")
+
+        with patch.object(session_processor, "_call_grouper_llm"):
+            with patch.object(session_processor, "ingest_tools") as mock_ingest:
+                session_processor.process(call_session_id, path)
+
+        mock_ingest.assert_not_called()
+
+    def test_ingest_tools_not_called_on_empty_ideas_early_return(
+        self, patched_db, call_session_id, transcript_file
+    ):
+        """Early-return path (empty ideas list) must not invoke ingest_tools."""
+        from src.processing import session_processor
+
+        path = transcript_file(self._long_transcript())
+        grouper_json = json.dumps({"ideas": []})
+
+        with patch.object(session_processor, "_call_grouper_llm", return_value=grouper_json):
+            with patch.object(session_processor, "ingest_tools") as mock_ingest:
+                session_processor.process(call_session_id, path)
+
+        mock_ingest.assert_not_called()
