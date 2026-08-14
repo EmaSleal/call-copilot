@@ -43,6 +43,12 @@ class CategoriesTab(TabPane):
         table.add_columns("ID", "Nombre", "Color", "Descripción")
         self._refresh()
 
+    def refresh_data(self) -> None:
+        """Reload categories from DB. Called when this tab becomes active,
+        since TabbedContent mounts all panes once at startup and on_mount() won't
+        fire again on tab switch."""
+        self._refresh()
+
     def _refresh(self) -> None:
         table = self.query_one("#cat-table", DataTable)
         table.clear()

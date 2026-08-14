@@ -53,6 +53,15 @@ class HistorialTab(TabPane):
         self._load_categories()
         self._refresh_sessions()
 
+    def refresh_data(self) -> None:
+        """Reload sessions/categories from DB. Called when this tab becomes active,
+        since TabbedContent mounts all panes once at startup and on_mount() won't
+        fire again on tab switch."""
+        self._load_categories()
+        self._refresh_sessions()
+        if self._selected_source is not None and self._selected_session_id is not None:
+            self._load_ideas_for_session(self._selected_source, self._selected_session_id)
+
     def _load_categories(self) -> None:
         self._categories_cache = {c.id: c.name for c in db.get_categories()}
 

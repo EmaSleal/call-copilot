@@ -118,12 +118,14 @@ class UnifiedApp(App):
     def on_categories_changed(self, event: CategoriesChanged) -> None:
         self.query_one(CategoriesTab)._refresh()
 
-    def on_tabbed_content_tab_activated(self, event: TabbedContent.TabActivated) -> None:
-        """TabbedContent mounts every pane once at startup — panes that define
-        refresh_data() (data can go stale while another tab was active) get a
-        chance to reload when the user switches back to them."""
+    def on_tabbed_content_tab_activated(
+        self, event: TabbedContent.TabActivated
+    ) -> None:
+        # TabbedContent mounts all TabPanes once at startup, so on_mount() never
+        # fires again on tab switch — tabs with data that can go stale from other
+        # tabs (Historial, Categorías, Tools) opt in via a refresh_data() method.
         refresh = getattr(event.pane, "refresh_data", None)
-        if refresh:
+        if refresh is not None:
             refresh()
 
 
