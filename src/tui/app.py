@@ -136,9 +136,10 @@ class UnifiedApp(App):
 
 
 def main():
-    if len(sys.argv) > 1 and sys.argv[1] == "update":
-        from src.core.updater import run_update
-        return run_update()
+    from src.core.cli import dispatch
+    exit_code = dispatch(sys.argv[1:])
+    if exit_code is not None:
+        return exit_code
 
     init_db()
     bootstrap._preload_models()

@@ -27,6 +27,24 @@ class TestMainArgvDispatch:
         mock_init_db.assert_not_called()
         mock_app_cls.assert_not_called()
 
+    def test_doctor_arg_dispatches_and_skips_tui(self, monkeypatch):
+        """Any known subcommand routes the same way — not just 'update'."""
+        import src.tui.app as app_module
+
+        monkeypatch.setattr("sys.argv", ["call-copilot", "doctor"])
+        mock_run_doctor = MagicMock(return_value=0)
+        monkeypatch.setattr("src.core.updater.run_doctor", mock_run_doctor)
+        mock_init_db = MagicMock()
+        monkeypatch.setattr(app_module, "init_db", mock_init_db)
+        mock_app_cls = MagicMock()
+        monkeypatch.setattr(app_module, "UnifiedApp", mock_app_cls)
+
+        exit_code = app_module.main()
+
+        assert exit_code == 0
+        mock_run_doctor.assert_called_once()
+        mock_init_db.assert_not_called()
+
     def test_no_args_launches_tui_as_before(self, monkeypatch):
         import src.tui.app as app_module
 

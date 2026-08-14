@@ -130,4 +130,10 @@ echo "$EXTRAS" > "$APP_HOME/install-profile"
 echo
 echo "✓ Listo. Corré 'call-copilot' para arrancar."
 echo "  Ctrl+S dentro de la app abre Configuración (API keys, backends)."
-echo "  'call-copilot update' trae la última versión más adelante."
+echo
+echo "Otros comandos:"
+echo "  call-copilot version        — versión y commit instalado"
+echo "  call-copilot check-update   — avisa si hay una versión nueva, sin instalarla"
+echo "  call-copilot update         — instala la última versión"
+echo "  call-copilot doctor         — diagnóstico (pipx, Python, extras, GPU)"
+echo "  call-copilot uninstall      — desinstala (tu config/datos en ~/.call-copilot quedan)"
