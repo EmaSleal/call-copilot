@@ -17,6 +17,24 @@ REPO_URL="https://github.com/EmaSleal/call-copilot.git"
 BRANCH="linux-support"
 APP_HOME="$HOME/.call-copilot"
 
+# `curl ... | sh` makes stdin the piped script source itself, not the
+# keyboard — a plain `read` at that point silently consumes bytes of the
+# script's own remaining source instead of waiting for the user, which is
+# why the prompts below were being skipped entirely. Reading from
+# /dev/tty (the real controlling terminal) sidesteps that. Falls back to
+# an empty reply — caller applies its own default — when there's truly no
+# terminal available at all (CI, no tty).
+prompt_read() {
+    printf "%s" "$1"
+    if [ -t 0 ]; then
+        read -r REPLY || REPLY=""
+    elif { read -r REPLY < /dev/tty; } 2>/dev/null; then
+        :
+    else
+        REPLY=""
+    fi
+}
+
 echo "═══════════════════════════════════════"
 echo "  Call Copilot — instalador"
 echo "═══════════════════════════════════════"
@@ -53,9 +71,8 @@ echo "¿Qué querés instalar?"
 echo "  1) Mínimo   — solo llamadas en vivo (Deepgram + GPT/Claude/Ollama)"
 echo "  2) Completo — todo (Whisper local, video, catálogo de tools con RAG)"
 echo "  3) Elegir a mano"
-printf "Elegí [1-3] (default: 1): "
-read -r PROFILE_CHOICE
-PROFILE_CHOICE="${PROFILE_CHOICE:-1}"
+prompt_read "Elegí [1-3] (default: 1): "
+PROFILE_CHOICE="${REPLY:-1}"
 
 EXTRAS=""
 case "$PROFILE_CHOICE" in
@@ -66,23 +83,20 @@ case "$PROFILE_CHOICE" in
         EXTRAS="whisper-local,video,rag"
         ;;
     3)
-        printf "¿Whisper local para STT? [y/N]: "
-        read -r ans
-        case "$ans" in
+        prompt_read "¿Whisper local para STT? [y/N]: "
+        case "$REPLY" in
             [Yy]*) EXTRAS="whisper-local" ;;
         esac
 
-        printf "¿Procesar videos de YouTube? [y/N]: "
-        read -r ans
-        case "$ans" in
+        prompt_read "¿Procesar videos de YouTube? [y/N]: "
+        case "$REPLY" in
             [Yy]*)
                 if [ -n "$EXTRAS" ]; then EXTRAS="$EXTRAS,video"; else EXTRAS="video"; fi
                 ;;
         esac
 
-        printf "¿Catálogo de tools con búsqueda semántica (RAG)? [y/N]: "
-        read -r ans
-        case "$ans" in
+        prompt_read "¿Catálogo de tools con búsqueda semántica (RAG)? [y/N]: "
+        case "$REPLY" in
             [Yy]*)
                 if [ -n "$EXTRAS" ]; then EXTRAS="$EXTRAS,rag"; else EXTRAS="rag"; fi
                 ;;
