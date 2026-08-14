@@ -15,7 +15,8 @@ from src.core.interfaces import STTProvider, TranscriptSegment
 
 logger = logging.getLogger("call_copilot.stt.deepgram")
 
-_KEEPALIVE_INTERVAL_S = 10
+_KEEPALIVE_INTERVAL_S = 5  # Deepgram closes the socket (NET-0001) after 10s of silence
+_CLOSE_DRAIN_TIMEOUT_S = 5  # max time to wait for buffered results after CloseStream
 
 
 class DeepgramSTT(STTProvider):
@@ -97,10 +98,20 @@ class DeepgramSTT(STTProvider):
             logger.warning("deepgram connection closed: %s", e)
 
     async def close(self) -> None:
+        if self._ws is not None:
+            try:
+                await self._ws.send(json.dumps({"type": "CloseStream"}))
+            except websockets.ConnectionClosed:
+                pass
         if self._keepalive_task:
             self._keepalive_task.cancel()
         if self._listen_task:
-            self._listen_task.cancel()
+            # Give Deepgram a chance to flush the final buffered transcript
+            # (triggered by CloseStream) before we tear down the socket.
+            try:
+                await asyncio.wait_for(self._listen_task, timeout=_CLOSE_DRAIN_TIMEOUT_S)
+            except (asyncio.TimeoutError, asyncio.CancelledError):
+                self._listen_task.cancel()
         if self._ws:
             await self._ws.close()
             self._ws = None

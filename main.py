@@ -71,7 +71,7 @@ async def main():
     else:
         from src.audio.pulse_source import PulseLoopbackSource
         audio_source = PulseLoopbackSource()
-    vad = SileroVAD(silence_threshold_ms=2000)
+    vad = SileroVAD(silence_threshold_ms=config_defaults.silence_threshold_ms())
     stt = build_stt_provider()
     trigger = HeuristicTriggerDetector(min_words=3)
     llm = build_llm_provider()

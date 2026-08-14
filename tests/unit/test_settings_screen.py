@@ -54,6 +54,29 @@ class TestValidateSettingsForm:
         values = {"WHISPER_MODEL_CALL": size, "WHISPER_MODEL_VIDEO": size}
         assert validate_settings_form(values) == []
 
+    def test_valid_silence_threshold_passes(self):
+        assert validate_settings_form({"SILENCE_THRESHOLD_MS": "2000"}) == []
+
+    def test_non_numeric_silence_threshold_is_rejected(self):
+        errors = validate_settings_form({"SILENCE_THRESHOLD_MS": "abc"})
+        assert len(errors) == 1
+        assert "SILENCE_THRESHOLD_MS" in errors[0]
+
+    def test_silence_threshold_below_range_is_rejected(self):
+        errors = validate_settings_form({"SILENCE_THRESHOLD_MS": "50"})
+        assert len(errors) == 1
+
+    def test_silence_threshold_above_range_is_rejected(self):
+        errors = validate_settings_form({"SILENCE_THRESHOLD_MS": "9000"})
+        assert len(errors) == 1
+
+    def test_silence_threshold_boundaries_are_accepted(self):
+        assert validate_settings_form({"SILENCE_THRESHOLD_MS": "100"}) == []
+        assert validate_settings_form({"SILENCE_THRESHOLD_MS": "5000"}) == []
+
+    def test_empty_silence_threshold_is_not_rejected(self):
+        assert validate_settings_form({"SILENCE_THRESHOLD_MS": ""}) == []
+
 
 # ---------------------------------------------------------------------------
 # diff_changed_keys()
@@ -98,6 +121,10 @@ class TestSummarizeScopes:
         result = summarize_scopes(["WHISPER_MODEL_VIDEO"])
         assert "reiniciar" not in result["WHISPER_MODEL_VIDEO"]
         assert "video" in result["WHISPER_MODEL_VIDEO"]
+
+    def test_silence_threshold_maps_to_restart_badge(self):
+        result = summarize_scopes(["SILENCE_THRESHOLD_MS"])
+        assert "reiniciar" in result["SILENCE_THRESHOLD_MS"]
 
     def test_llm_backend_maps_to_next_call_badge(self):
         result = summarize_scopes(["LLM_BACKEND"])

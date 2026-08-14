@@ -44,6 +44,17 @@ def validate_settings_form(values: dict) -> list[str]:
         value = values.get(key, "")
         if value and value not in config_defaults.WHISPER_SIZES:
             errors.append(f"{key}: tamaño de modelo Whisper inválido ('{value}').")
+
+    threshold = values.get("SILENCE_THRESHOLD_MS", "")
+    if threshold:
+        try:
+            threshold_int = int(threshold)
+        except ValueError:
+            errors.append(f"SILENCE_THRESHOLD_MS: debe ser un número entero ('{threshold}').")
+        else:
+            if not (100 <= threshold_int <= 5000):
+                errors.append("SILENCE_THRESHOLD_MS: debe estar entre 100 y 5000 ms.")
+
     return errors
 
 
@@ -172,6 +183,13 @@ class SettingsScreen(ModalScreen):
                     id="settings-whisper-video",
                     value=config_defaults.whisper_model_video(),
                 )
+                yield Label(
+                    "Silencio para fin de turno (ms, 100-5000) — requiere reiniciar:"
+                )
+                yield Input(
+                    id="settings-silence-threshold",
+                    value=str(config_defaults.silence_threshold_ms()),
+                )
                 yield Button("Guardar", id="btn-settings-save", variant="primary")
                 yield Label("Tech Scout — ruta a tools.db:")
                 yield Input(
@@ -189,6 +207,7 @@ class SettingsScreen(ModalScreen):
             "STT_BACKEND": config_defaults.stt_backend(),
             "WHISPER_MODEL_CALL": config_defaults.whisper_model_call(),
             "WHISPER_MODEL_VIDEO": config_defaults.whisper_model_video(),
+            "SILENCE_THRESHOLD_MS": str(config_defaults.silence_threshold_ms()),
         }
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
@@ -212,6 +231,9 @@ class SettingsScreen(ModalScreen):
             "WHISPER_MODEL_VIDEO": str(
                 self.query_one("#settings-whisper-video", Select).value
             ),
+            "SILENCE_THRESHOLD_MS": self.query_one(
+                "#settings-silence-threshold", Input
+            ).value,
         }
         errors = validate_settings_form(new_values)
         if errors:
