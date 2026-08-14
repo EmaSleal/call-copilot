@@ -2,7 +2,6 @@
 
 import asyncio
 import shutil
-from pathlib import Path
 
 from textual.app import ComposeResult
 from textual.containers import Horizontal
@@ -154,8 +153,10 @@ class VideoTab(TabPane):
         if action == "analyze":
             asyncio.create_task(self._analyze_others(sid))
         elif action == "delete":
+            from src.video.pipeline import OUTPUT_DIR
+
             db.delete_video_session(sid)
-            session_dir = Path("data/videos") / str(sid)
+            session_dir = OUTPUT_DIR / str(sid)
             if session_dir.exists():
                 shutil.rmtree(session_dir, ignore_errors=True)
             self._selected_session_id = None

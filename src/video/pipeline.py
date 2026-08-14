@@ -18,6 +18,7 @@ from typing import Callable, Optional
 
 import whisper
 
+from src.core.paths import app_home
 from src.db.database import (
     Category, Segment, VideoSession,
     create_video_session, get_categories, save_segment, update_session_status,
@@ -27,7 +28,7 @@ from src.video.report import generate_html_report
 
 logger = logging.getLogger("unified.video_pipeline")
 
-OUTPUT_DIR = Path("data/videos")
+OUTPUT_DIR = app_home() / "data" / "videos"
 
 
 def run_pipeline(

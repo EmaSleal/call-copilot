@@ -3,6 +3,8 @@ import uuid
 from datetime import datetime
 from openai import AsyncOpenAI
 
+from src.core.paths import app_home
+
 logger = logging.getLogger("call_copilot.rag.chroma_store")
 
 
@@ -15,7 +17,8 @@ class RAGStore:
 
     EMBED_MODEL = "text-embedding-3-small"
 
-    def __init__(self, session_id: str, openai_client: AsyncOpenAI, persist_dir: str = "data/chroma"):
+    def __init__(self, session_id: str, openai_client: AsyncOpenAI, persist_dir: str | None = None):
+        persist_dir = persist_dir or str(app_home() / "data" / "chroma")
         self._openai = openai_client
         self.session_id = session_id
         self.collection_name = f"call_{session_id}"

@@ -13,6 +13,7 @@ import logging
 from pathlib import Path
 from dataclasses import asdict
 
+from src.core.paths import app_home
 from src.profiles.models import CallProfile, ProfileHeuristics, ResponseMode
 
 logger = logging.getLogger("call_copilot.profiles.store")
@@ -127,7 +128,7 @@ class ProfileStore:
     """
 
     def __init__(self, path: Path | None = None) -> None:
-        self._path = path or Path("data/profiles.json")
+        self._path = path or (app_home() / "data" / "profiles.json")
         self._profiles: dict[str, CallProfile] = {}
         self._active_id: str = _DEFAULT_ACTIVE_ID
         self._load()

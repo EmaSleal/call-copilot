@@ -17,8 +17,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
+from src.core.paths import app_home
 
-DB_PATH = Path("data/app.db")
+DB_PATH = app_home() / "data" / "app.db"
 
 
 @dataclass

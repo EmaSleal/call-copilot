@@ -2,6 +2,8 @@ import logging
 
 from openai import AsyncOpenAI
 
+from src.core.paths import app_home
+
 logger = logging.getLogger("call_copilot.rag.tools_store")
 
 
@@ -16,7 +18,8 @@ class ToolsCatalogStore:
     EMBED_MODEL = "text-embedding-3-small"
     COLLECTION = "tools_catalog"
 
-    def __init__(self, openai_client: AsyncOpenAI | None, persist_dir: str = "data/chroma"):
+    def __init__(self, openai_client: AsyncOpenAI | None, persist_dir: str | None = None):
+        persist_dir = persist_dir or str(app_home() / "data" / "chroma")
         self._openai = openai_client
         self._collection = None
         try:

@@ -129,7 +129,7 @@ class CallCopilotPipeline:
     @property
     def transcript_path(self) -> str:
         """Return the filesystem path of the current session's transcript file."""
-        return f"whisper-text/{self.session_logger.session_id}.txt"
+        return str(self.session_logger.file_path)
 
     async def start(self, title: str = "") -> None:
         if self._running:
@@ -147,7 +147,7 @@ class CallCopilotPipeline:
             import src.db.database as db
             cs = db.create_call_session(
                 context=self.initial_context,
-                transcript_path=f"whisper-text/{self.session_logger.session_id}.txt",
+                transcript_path=str(self.session_logger.file_path),
                 chroma_collection=self._rag.collection_name,
                 profile_id=self._active_profile.id if self._active_profile else None,
                 title=title,
@@ -166,7 +166,7 @@ class CallCopilotPipeline:
         await self.audio_source.stop()
         await self.stt.close()
         self.session_logger.close()
-        logger.info("sesión guardada: whisper-text/%s.txt", self.session_logger.session_id)
+        logger.info("sesión guardada: %s", self.session_logger.file_path)
 
     async def _feed_audio_to_stt(self) -> None:
         async for chunk in self.audio_source.stream():

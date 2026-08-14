@@ -8,14 +8,17 @@ la conversación completa con las sugerencias del copiloto identificadas.
 from datetime import datetime
 from pathlib import Path
 
+from src.core.paths import app_home
+
 
 class SessionLogger:
-    def __init__(self, base_dir: str = "whisper-text", initial_context: str = ""):
+    def __init__(self, base_dir: str | None = None, initial_context: str = ""):
         self.session_id = datetime.now().strftime("%Y%m%d_%H%M%S")
-        out_dir = Path(base_dir)
-        out_dir.mkdir(exist_ok=True)
+        out_dir = Path(base_dir) if base_dir is not None else app_home() / "whisper-text"
+        out_dir.mkdir(parents=True, exist_ok=True)
 
-        self._file = open(out_dir / f"{self.session_id}.txt", "w", encoding="utf-8")
+        self.file_path = out_dir / f"{self.session_id}.txt"
+        self._file = open(self.file_path, "w", encoding="utf-8")
         self._write(f"=== Sesión {self.session_id} ===\n")
         if initial_context:
             self._write(f"Contexto inicial: {initial_context}\n")

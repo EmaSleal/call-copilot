@@ -21,11 +21,12 @@ from pathlib import Path
 import anthropic
 import openai
 
+from src.core.paths import app_home
 from src.profiles.models import AVAILABLE_MODELS
 
 logger = logging.getLogger("call_copilot.llm.model_catalog")
 
-_CACHE_PATH = Path("data/model_catalog_cache.json")
+_CACHE_PATH = app_home() / "data" / "model_catalog_cache.json"
 _CACHE_VERSION = 1
 _TTL_SECONDS = 24 * 60 * 60
 

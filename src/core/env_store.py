@@ -16,8 +16,10 @@ import shutil
 import stat
 from pathlib import Path
 
-ENV_PATH = Path(".env")
-EXAMPLE_ENV_PATH = Path("example.env")
+from src.core.paths import app_home
+
+ENV_PATH = app_home() / ".env"
+EXAMPLE_ENV_PATH = Path("example.env")  # shipped template — always repo-relative
 
 _ENV_FILE_MODE = stat.S_IRUSR | stat.S_IWUSR  # 0600 — puede contener API keys
 
