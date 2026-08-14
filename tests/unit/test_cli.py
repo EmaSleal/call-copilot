@@ -7,7 +7,7 @@ launching the TUI.
 from unittest.mock import MagicMock
 import pytest
 
-from src.core.cli import dispatch
+from src.core.cli import dispatch, run_help
 
 
 class TestDispatch:
@@ -44,3 +44,18 @@ class TestDispatch:
         monkeypatch.setattr("src.core.updater.run_version", mock_fn)
 
         assert dispatch(["version", "--extra", "stuff"]) == 0
+
+    @pytest.mark.parametrize("arg", ["help", "--help", "-h"])
+    def test_help_aliases_dispatch_to_run_help(self, arg):
+        assert dispatch([arg]) == 0
+
+
+class TestRunHelp:
+    def test_lists_every_known_command(self, capsys):
+        run_help()
+        out = capsys.readouterr().out
+        for command in ("update", "check-update", "version", "uninstall", "doctor", "help"):
+            assert command in out
+
+    def test_returns_zero(self):
+        assert run_help() == 0
