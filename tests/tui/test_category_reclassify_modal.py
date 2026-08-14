@@ -17,7 +17,7 @@ from src.db.database import CallSegment, Category, Segment
 
 class TestReclassifyCategory:
     def test_moves_matching_video_and_call_segments_and_returns_total_count(self):
-        from src.tui.tabs.historial import _reclassify_category
+        from src.tui.screens.category_reclassify_modal import _reclassify_category
 
         tecnico = Category(id=1, name="Técnico", description="", color="#000")
         nueva = Category(id=2, name="Prompt Engineering", description="d", color="#000")
@@ -27,13 +27,13 @@ class TestReclassifyCategory:
         call_seg1 = CallSegment(id=20, call_session_id=7, sort_order=0, text="c", category_id=1)
 
         with (
-            patch("src.tui.tabs.historial.db.get_categories", return_value=[tecnico, nueva]),
-            patch("src.tui.tabs.historial.db.get_segments_by_category_global",
+            patch("src.tui.screens.category_reclassify_modal.db.get_categories", return_value=[tecnico, nueva]),
+            patch("src.tui.screens.category_reclassify_modal.db.get_segments_by_category_global",
                   return_value=[video_seg1, video_seg2]),
-            patch("src.tui.tabs.historial.db.get_call_segments_by_category_global",
+            patch("src.tui.screens.category_reclassify_modal.db.get_call_segments_by_category_global",
                   return_value=[call_seg1]),
-            patch("src.tui.tabs.historial.db.update_segment_category") as mock_update_video,
-            patch("src.tui.tabs.historial.db.update_call_segment_category") as mock_update_call,
+            patch("src.tui.screens.category_reclassify_modal.db.update_segment_category") as mock_update_video,
+            patch("src.tui.screens.category_reclassify_modal.db.update_call_segment_category") as mock_update_call,
             patch("src.video.classifier.classify_segments_batch",
                   side_effect=[[2, None], [2]]),  # first call: video texts, second: call texts
         ):
@@ -44,30 +44,30 @@ class TestReclassifyCategory:
         mock_update_call.assert_called_once_with(20, 2)
 
     def test_returns_zero_when_nothing_in_category(self):
-        from src.tui.tabs.historial import _reclassify_category
+        from src.tui.screens.category_reclassify_modal import _reclassify_category
 
         with (
-            patch("src.tui.tabs.historial.db.get_categories", return_value=[]),
-            patch("src.tui.tabs.historial.db.get_segments_by_category_global", return_value=[]),
-            patch("src.tui.tabs.historial.db.get_call_segments_by_category_global", return_value=[]),
+            patch("src.tui.screens.category_reclassify_modal.db.get_categories", return_value=[]),
+            patch("src.tui.screens.category_reclassify_modal.db.get_segments_by_category_global", return_value=[]),
+            patch("src.tui.screens.category_reclassify_modal.db.get_call_segments_by_category_global", return_value=[]),
         ):
             moved = asyncio.run(_reclassify_category(category_id=1))
 
         assert moved == 0
 
     def test_only_reclassifies_video_when_no_call_segments_match(self):
-        from src.tui.tabs.historial import _reclassify_category
+        from src.tui.screens.category_reclassify_modal import _reclassify_category
 
         tecnico = Category(id=1, name="Técnico", description="", color="#000")
         nueva = Category(id=2, name="Prompt Engineering", description="d", color="#000")
         video_seg = Segment(id=10, session_id=5, start_s=0.0, end_s=1.0, text="a", category_id=1)
 
         with (
-            patch("src.tui.tabs.historial.db.get_categories", return_value=[tecnico, nueva]),
-            patch("src.tui.tabs.historial.db.get_segments_by_category_global", return_value=[video_seg]),
-            patch("src.tui.tabs.historial.db.get_call_segments_by_category_global", return_value=[]),
-            patch("src.tui.tabs.historial.db.update_segment_category") as mock_update_video,
-            patch("src.tui.tabs.historial.db.update_call_segment_category") as mock_update_call,
+            patch("src.tui.screens.category_reclassify_modal.db.get_categories", return_value=[tecnico, nueva]),
+            patch("src.tui.screens.category_reclassify_modal.db.get_segments_by_category_global", return_value=[video_seg]),
+            patch("src.tui.screens.category_reclassify_modal.db.get_call_segments_by_category_global", return_value=[]),
+            patch("src.tui.screens.category_reclassify_modal.db.update_segment_category") as mock_update_video,
+            patch("src.tui.screens.category_reclassify_modal.db.update_call_segment_category") as mock_update_call,
             patch("src.video.classifier.classify_segments_batch", return_value=[2]),
         ):
             moved = asyncio.run(_reclassify_category(category_id=1))
@@ -90,15 +90,15 @@ class TestReclassifyCategory:
         segments) that excluding the target category force-moved 100% of
         them out, most into unrelated categories, when only a fraction
         actually matched the newly suggested sub-categories."""
-        from src.tui.tabs.historial import _reclassify_category
+        from src.tui.screens.category_reclassify_modal import _reclassify_category
 
         tecnico = Category(id=1, name="Técnico", description="", color="#000")
         video_seg = Segment(id=10, session_id=5, start_s=0.0, end_s=1.0, text="a", category_id=1)
 
         with (
-            patch("src.tui.tabs.historial.db.get_categories", return_value=[tecnico]),
-            patch("src.tui.tabs.historial.db.get_segments_by_category_global", return_value=[video_seg]),
-            patch("src.tui.tabs.historial.db.get_call_segments_by_category_global", return_value=[]),
+            patch("src.tui.screens.category_reclassify_modal.db.get_categories", return_value=[tecnico]),
+            patch("src.tui.screens.category_reclassify_modal.db.get_segments_by_category_global", return_value=[video_seg]),
+            patch("src.tui.screens.category_reclassify_modal.db.get_call_segments_by_category_global", return_value=[]),
             patch("src.video.classifier.classify_segments_batch") as mock_classify,
         ):
             mock_classify.return_value = [1]  # classifier is allowed to re-pick it
@@ -111,16 +111,16 @@ class TestReclassifyCategory:
         """The classifier legitimately re-picking the target category (the
         fragment still belongs there) must not write a no-op update or
         count toward `moved` — nothing actually moved."""
-        from src.tui.tabs.historial import _reclassify_category
+        from src.tui.screens.category_reclassify_modal import _reclassify_category
 
         tecnico = Category(id=1, name="Técnico", description="", color="#000")
         video_seg = Segment(id=10, session_id=5, start_s=0.0, end_s=1.0, text="a", category_id=1)
 
         with (
-            patch("src.tui.tabs.historial.db.get_categories", return_value=[tecnico]),
-            patch("src.tui.tabs.historial.db.get_segments_by_category_global", return_value=[video_seg]),
-            patch("src.tui.tabs.historial.db.get_call_segments_by_category_global", return_value=[]),
-            patch("src.tui.tabs.historial.db.update_segment_category") as mock_update,
+            patch("src.tui.screens.category_reclassify_modal.db.get_categories", return_value=[tecnico]),
+            patch("src.tui.screens.category_reclassify_modal.db.get_segments_by_category_global", return_value=[video_seg]),
+            patch("src.tui.screens.category_reclassify_modal.db.get_call_segments_by_category_global", return_value=[]),
+            patch("src.tui.screens.category_reclassify_modal.db.update_segment_category") as mock_update,
             patch("src.video.classifier.classify_segments_batch", return_value=[1]),
         ):
             moved = asyncio.run(_reclassify_category(category_id=1))
