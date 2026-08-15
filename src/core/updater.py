@@ -178,6 +178,18 @@ def run_uninstall() -> int:
     except FileNotFoundError:
         print("pipx no está instalado.")
         return 1
+
+    # pipx can report success even when Windows (AV/real-time scanning)
+    # blocked it from fully removing the venv -- same root cause as
+    # run_update()'s retry. Left behind, that venv silently breaks the
+    # next install/update ("already seems to be installed"), so sweep it
+    # ourselves regardless of what pipx reported.
+    venvs_dir = _pipx_venvs_dir()
+    if venvs_dir is not None:
+        leftover = venvs_dir / "call-copilot"
+        if leftover.exists():
+            shutil.rmtree(leftover, ignore_errors=True)
+
     if result.returncode == 0:
         print(f"\nTu configuración y datos siguen en {app_home()} — borralos a mano si querés limpiar todo.")
     return result.returncode

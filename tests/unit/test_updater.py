@@ -379,6 +379,7 @@ class TestRunCheckUpdate:
 class TestRunUninstall:
     def test_calls_pipx_uninstall(self, monkeypatch, tmp_path):
         monkeypatch.setattr("src.core.updater.app_home", lambda: tmp_path)
+        monkeypatch.setattr("src.core.updater._pipx_venvs_dir", lambda: None)
         mock_run = MagicMock(return_value=MagicMock(returncode=0))
         monkeypatch.setattr("src.core.updater.subprocess.run", mock_run)
 
@@ -395,10 +396,38 @@ class TestRunUninstall:
 
     def test_propagates_pipx_exit_code(self, monkeypatch, tmp_path):
         monkeypatch.setattr("src.core.updater.app_home", lambda: tmp_path)
+        monkeypatch.setattr("src.core.updater._pipx_venvs_dir", lambda: None)
         mock_run = MagicMock(return_value=MagicMock(returncode=1))
         monkeypatch.setattr("src.core.updater.subprocess.run", mock_run)
 
         assert run_uninstall() == 1
+
+    def test_sweeps_leftover_venv_even_when_pipx_reports_success(self, monkeypatch, tmp_path):
+        """The exact Windows failure mode seen live: pipx fails to move
+        the venv to trash (AV/permissions) but still reports the
+        uninstall as successful, leaving a directory behind that breaks
+        the next install."""
+        monkeypatch.setattr("src.core.updater.app_home", lambda: tmp_path)
+        venvs_dir = tmp_path / "venvs"
+        leftover = venvs_dir / "call-copilot"
+        leftover.mkdir(parents=True)
+        (leftover / "pyvenv.cfg").write_text("stale")
+        monkeypatch.setattr("src.core.updater._pipx_venvs_dir", lambda: venvs_dir)
+        mock_run = MagicMock(return_value=MagicMock(returncode=0))
+        monkeypatch.setattr("src.core.updater.subprocess.run", mock_run)
+
+        assert run_uninstall() == 0
+        assert not leftover.exists()
+
+    def test_no_op_when_nothing_left_behind(self, monkeypatch, tmp_path):
+        monkeypatch.setattr("src.core.updater.app_home", lambda: tmp_path)
+        venvs_dir = tmp_path / "venvs"
+        venvs_dir.mkdir()
+        monkeypatch.setattr("src.core.updater._pipx_venvs_dir", lambda: venvs_dir)
+        mock_run = MagicMock(return_value=MagicMock(returncode=0))
+        monkeypatch.setattr("src.core.updater.subprocess.run", mock_run)
+
+        assert run_uninstall() == 0
 
 
 # ─────────────────────────────────────────────────────────────
