@@ -151,13 +151,28 @@ def suggest_new_categories(
         return []
 
 
-def _call_suggest_llm(prompt: str, backend: str) -> str:
+def _call_backend(
+    prompt: str,
+    system: str,
+    backend: str,
+    *,
+    temperature: float,
+    max_tokens: int,
+    json_mode: bool,
+    ollama_num_ctx: int = 4096,
+) -> str:
+    """Shared triple-branch (claude/ollama/gpt) LLM call, extracted from the
+    formerly-duplicated bodies of `_call_llm` and `_call_suggest_llm` (design
+    decision A5). All three callers (`_call_llm`, `_call_suggest_llm`,
+    `_call_judge_llm`) delegate here — request shape per backend is
+    characterized by tests/unit/test_classifier_judge.py, written before this
+    extraction existed."""
     if backend == "claude":
         client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
         msg = client.messages.create(
             model="claude-haiku-4-5-20251001",
-            max_tokens=512,
-            system=_SUGGEST_SYSTEM,
+            max_tokens=max_tokens,
+            system=system,
             messages=[{"role": "user", "content": prompt}],
         )
         return msg.content[0].text
@@ -169,68 +184,101 @@ def _call_suggest_llm(prompt: str, backend: str) -> str:
         )
         resp = client.chat.completions.create(
             model=os.getenv("OLLAMA_MODEL", "qwen3:4b"),
-            max_completion_tokens=512,
-            temperature=0.3,
+            max_completion_tokens=max_tokens,
+            temperature=temperature,
             messages=[
-                {"role": "system", "content": _SUGGEST_SYSTEM},
+                {"role": "system", "content": system},
                 {"role": "user", "content": "/no_think\n" + prompt},
             ],
-            extra_body={"options": {"think": False, "num_ctx": 8192}},
-        )
-        return resp.choices[0].message.content
-
-    client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-    resp = client.chat.completions.create(
-        model="gpt-5.4-nano",
-        max_completion_tokens=512,
-        temperature=0.3,
-        messages=[
-            {"role": "system", "content": _SUGGEST_SYSTEM},
-            {"role": "user", "content": prompt},
-        ],
-        response_format={"type": "json_object"},
-    )
-    return resp.choices[0].message.content
-
-
-def _call_llm(prompt: str, backend: str) -> str:
-    if backend == "claude":
-        client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
-        msg = client.messages.create(
-            model="claude-haiku-4-5-20251001",
-            max_tokens=512,
-            system=_SYSTEM,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        return msg.content[0].text
-
-    if backend == "ollama":
-        client = openai.OpenAI(
-            api_key="ollama",
-            base_url=os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1"),
-        )
-        resp = client.chat.completions.create(
-            model=os.getenv("OLLAMA_MODEL", "qwen3:4b"),
-            max_completion_tokens=512,
-            temperature=0.0,
-            messages=[
-                {"role": "system", "content": _SYSTEM},
-                {"role": "user", "content": "/no_think\n" + prompt},
-            ],
-            extra_body={"options": {"think": False, "num_ctx": 4096}},
+            extra_body={"options": {"think": False, "num_ctx": ollama_num_ctx}},
         )
         return resp.choices[0].message.content
 
     # default: gpt
     client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+    kwargs = {}
+    if json_mode:
+        kwargs["response_format"] = {"type": "json_object"}
     resp = client.chat.completions.create(
         model="gpt-5.4-nano",
-        max_completion_tokens=512,
-        temperature=0.0,
+        max_completion_tokens=max_tokens,
+        temperature=temperature,
         messages=[
-            {"role": "system", "content": _SYSTEM},
+            {"role": "system", "content": system},
             {"role": "user", "content": prompt},
         ],
-        response_format={"type": "json_object"},
+        **kwargs,
     )
     return resp.choices[0].message.content
+
+
+def _call_suggest_llm(prompt: str, backend: str) -> str:
+    return _call_backend(
+        prompt, _SUGGEST_SYSTEM, backend,
+        temperature=0.3, max_tokens=512, json_mode=True, ollama_num_ctx=8192,
+    )
+
+
+def _call_llm(prompt: str, backend: str) -> str:
+    return _call_backend(
+        prompt, _SYSTEM, backend,
+        temperature=0.0, max_tokens=512, json_mode=True, ollama_num_ctx=4096,
+    )
+
+
+_JUDGE_SYSTEM = (
+    "You decide whether a proposed content category duplicates one that already "
+    "exists. Respond ONLY with valid JSON: "
+    '{"verdict":"MATCH","category_id":12} or {"verdict":"NEW","category_id":null}. '
+    "Rules: MATCH only when an existing category already covers essentially the "
+    "same topic; a broader or merely adjacent topic is NOT a match. When unsure, "
+    "answer NEW. No text before or after the JSON."
+)
+
+
+def _build_judge_prompt(name: str, description: str, existing: list[Category]) -> str:
+    existing_str = "\n".join(
+        f"- ID {c.id}: {c.name} — {c.description}" for c in existing
+    )
+    return (
+        f"Existing categories:\n{existing_str}\n\n"
+        f"Proposed category: {name} — {description}\n\n"
+        "Does the proposed category duplicate one of the existing ones?"
+    )
+
+
+def _call_judge_llm(prompt: str, backend: str) -> str:
+    return _call_backend(
+        prompt, _JUDGE_SYSTEM, backend,
+        temperature=0.0, max_tokens=128, json_mode=True, ollama_num_ctx=4096,
+    )
+
+
+def judge_category_duplicate(
+    name: str,
+    description: str,
+    existing: list[Category],
+) -> Optional[int]:
+    """Id of an existing category that already covers (name, description), else None.
+
+    Fail-open (spec: Fail-open on any uncertainty): every error, timeout, or
+    unparseable output returns None rather than raising or matching by default.
+    """
+    if not existing:
+        return None
+
+    backend = os.getenv("LLM_BACKEND", "ollama")
+    valid_ids = {c.id for c in existing}
+    prompt = _build_judge_prompt(name, description, existing)
+
+    try:
+        raw = _call_judge_llm(prompt, backend)
+        data = json.loads(raw)
+        verdict = data.get("verdict")
+        category_id = data.get("category_id")
+        if verdict == "MATCH" and category_id is not None and int(category_id) in valid_ids:
+            return int(category_id)
+        return None
+    except Exception as e:
+        logger.error("judge_category_duplicate failed: %s", e)
+        return None
