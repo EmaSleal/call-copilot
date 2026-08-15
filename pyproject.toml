@@ -28,7 +28,7 @@ dependencies = [
     # WASAPI loopback capture — Windows only (src/audio/wasapi_source.py).
     # Linux uses PulseAudio via subprocess (src/audio/pulse_source.py), no
     # PyAudio dependency there.
-    "PyAudioWPatch==0.2.12.7; sys_platform == 'win32'",
+    "PyAudioWPatch>=0.2.12.8; sys_platform == 'win32'",
     # BlackHole loopback capture — macOS only (src/audio/blackhole_source.py).
     # Plain PyAudio suffices here: BlackHole shows up as a regular input
     # device once installed (brew install blackhole-2ch), no loopback-specific
