@@ -5,6 +5,34 @@ from textual.containers import Horizontal, Vertical
 from textual.widgets import Button, DataTable, Input, Label, TabPane
 
 import src.db.database as db
+from src.db.database import Category
+
+
+def build_category_tree(categories: list[Category]) -> list[tuple[Category, int]]:
+    """Display order [(category, depth)]: top-level alphabetical, children
+    alphabetical under their parent. A child whose parent is missing is
+    rendered as top-level (defensive, never dropped).
+
+    Pure function — no side effects, easy to test without Textual. Mirrors
+    the `_find_otro_category` precedent in `src/tui/tabs/video.py`.
+    """
+    by_id = {c.id: c for c in categories}
+    children_by_parent: dict[int, list[Category]] = {}
+    top_level: list[Category] = []
+
+    for c in categories:
+        if c.parent_id is not None and c.parent_id in by_id:
+            children_by_parent.setdefault(c.parent_id, []).append(c)
+        else:
+            top_level.append(c)
+
+    top_level.sort(key=lambda c: c.name)
+    result: list[tuple[Category, int]] = []
+    for parent in top_level:
+        result.append((parent, 0))
+        for child in sorted(children_by_parent.get(parent.id, []), key=lambda c: c.name):
+            result.append((child, 1))
+    return result
 
 
 class CategoriesTab(TabPane):
