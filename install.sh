@@ -14,8 +14,13 @@
 set -eu
 
 REPO_URL="https://github.com/EmaSleal/call-copilot.git"
-BRANCH="main"
 APP_HOME="$HOME/.call-copilot"
+
+# Highest vX.Y.Z release tag (release-please's format), so installs are
+# pinned/reproducible instead of tracking main's moving HEAD. Falls back
+# to "main" when no tags exist yet or git can't reach the repo.
+REF="$(git ls-remote --tags --refs --sort=-v:refname "$REPO_URL" 'v*' 2>/dev/null | head -n1 | sed 's#.*refs/tags/##')"
+REF="${REF:-main}"
 
 # `curl ... | sh` makes stdin the piped script source itself, not the
 # keyboard — a plain `read` at that point silently consumes bytes of the
@@ -132,13 +137,13 @@ esac
 
 # ── instalación ──────────────────────────────────────────────────────────
 if [ -n "$EXTRAS" ]; then
-    SPEC="call-copilot[$EXTRAS] @ git+${REPO_URL}@${BRANCH}"
+    SPEC="call-copilot[$EXTRAS] @ git+${REPO_URL}@${REF}"
 else
-    SPEC="call-copilot @ git+${REPO_URL}@${BRANCH}"
+    SPEC="call-copilot @ git+${REPO_URL}@${REF}"
 fi
 
 echo
-echo "Instalando: $SPEC"
+echo "Instalando ($REF): $SPEC"
 # uninstall-then-install rather than `pipx install --force` — pipx's
 # uv-backed venv creation refuses to clear a venv from a prior session on
 # some setups, so --force fails outright there. Uninstalling a package

@@ -10,8 +10,11 @@ import subprocess
 from src.core.paths import _is_dev_checkout, _REPO_ROOT, app_home
 
 _REPO_URL = "https://github.com/EmaSleal/call-copilot.git"
-_BRANCH = "main"
-_GIT_SPEC = f"git+{_REPO_URL}@{_BRANCH}"
+# Fallback ref when no release tag exists yet (e.g. before the first
+# release-please PR is ever merged) or the tag lookup fails outright —
+# install/update still work, just tracking main's moving HEAD instead of
+# a pinned, reproducible release.
+_FALLBACK_REF = "main"
 
 
 def _profile_path():
@@ -28,9 +31,27 @@ def read_install_profile() -> str:
     return path.read_text(encoding="utf-8").strip()
 
 
-def build_pip_spec(extras: str) -> str:
+def get_latest_release_tag() -> str:
+    """Latest vX.Y.Z release tag on the public repo (release-please's tag
+    format), highest-semver first via `git ls-remote --sort`. Falls back
+    to _FALLBACK_REF when no tags exist yet or the query fails — same
+    no-token, git-is-already-required approach as get_remote_commit()."""
+    try:
+        result = subprocess.run(
+            ["git", "ls-remote", "--tags", "--refs", "--sort=-v:refname", _REPO_URL, "v*"],
+            capture_output=True, text=True, check=True, timeout=15,
+        )
+    except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
+        return _FALLBACK_REF
+    first_line = result.stdout.strip().splitlines()[0] if result.stdout.strip() else ""
+    if not first_line or "refs/tags/" not in first_line:
+        return _FALLBACK_REF
+    return first_line.rsplit("refs/tags/", 1)[-1]
+
+
+def build_pip_spec(extras: str, ref: str) -> str:
     pkg = f"call-copilot[{extras}]" if extras else "call-copilot"
-    return f"{pkg} @ {_GIT_SPEC}"
+    return f"{pkg} @ git+{_REPO_URL}@{ref}"
 
 
 def get_installed_commit() -> str | None:
@@ -55,13 +76,14 @@ def get_installed_commit() -> str | None:
         return None
 
 
-def get_remote_commit(branch: str = _BRANCH) -> str | None:
-    """Latest commit SHA on the given branch of the public repo, via
-    `git ls-remote` — no API token/auth complexity, git is guaranteed
-    present (pipx needs it to install from a git URL in the first place)."""
+def get_remote_commit(ref: str = _FALLBACK_REF) -> str | None:
+    """Commit SHA the given ref (tag or branch) of the public repo points
+    at, via `git ls-remote` — no API token/auth complexity, git is
+    guaranteed present (pipx needs it to install from a git URL in the
+    first place)."""
     try:
         result = subprocess.run(
-            ["git", "ls-remote", _REPO_URL, branch],
+            ["git", "ls-remote", _REPO_URL, ref],
             capture_output=True, text=True, check=True, timeout=15,
         )
     except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
@@ -79,8 +101,9 @@ def run_update() -> int:
     not-yet-installed package returns nonzero; that's expected on a first
     run and must not block the install that follows."""
     extras = read_install_profile()
-    spec = build_pip_spec(extras)
-    print(f"Actualizando call-copilot ({extras or 'sin extras'})...")
+    ref = get_latest_release_tag()
+    spec = build_pip_spec(extras, ref)
+    print(f"Actualizando call-copilot a {ref} ({extras or 'sin extras'})...")
     try:
         subprocess.run(["pipx", "uninstall", "call-copilot"])
         result = subprocess.run(["pipx", "install", spec])
@@ -100,7 +123,8 @@ def run_version() -> int:
 
 def run_check_update() -> int:
     installed = get_installed_commit()
-    remote = get_remote_commit()
+    ref = get_latest_release_tag()
+    remote = get_remote_commit(ref)
     if remote is None:
         print("No se pudo consultar el repositorio remoto (¿sin conexión?).")
         return 1
@@ -108,9 +132,9 @@ def run_check_update() -> int:
         print("No se pudo determinar la versión instalada.")
         return 1
     if installed == remote:
-        print(f"Estás al día (commit {installed[:12]}).")
+        print(f"Estás al día ({ref}, commit {installed[:12]}).")
     else:
-        print(f"Hay una versión nueva disponible: {remote[:12]} (tenés {installed[:12]}).")
+        print(f"Hay una versión nueva disponible: {ref} ({remote[:12]}) — tenés {installed[:12]}.")
         print("Corré 'call-copilot update' para actualizar.")
     return 0
 

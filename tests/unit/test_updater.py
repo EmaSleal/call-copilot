@@ -13,6 +13,7 @@ import pytest
 from src.core.updater import (
     build_pip_spec,
     get_installed_commit,
+    get_latest_release_tag,
     get_remote_commit,
     read_install_profile,
     run_check_update,
@@ -25,21 +26,50 @@ from src.core.updater import (
 
 class TestBuildPipSpec:
     def test_no_extras_uses_base_package(self):
-        spec = build_pip_spec("")
+        spec = build_pip_spec("", ref="main")
         assert spec.startswith("call-copilot @ ")
         assert "[" not in spec.split(" @ ")[0]
 
     def test_single_extra(self):
-        spec = build_pip_spec("rag")
+        spec = build_pip_spec("rag", ref="main")
         assert spec.startswith("call-copilot[rag] @ ")
 
     def test_multiple_extras_comma_joined(self):
-        spec = build_pip_spec("rag,video")
+        spec = build_pip_spec("rag,video", ref="main")
         assert spec.startswith("call-copilot[rag,video] @ ")
 
-    def test_spec_points_at_the_git_repo(self):
-        spec = build_pip_spec("")
-        assert spec.endswith("git+https://github.com/EmaSleal/call-copilot.git@main")
+    def test_spec_points_at_the_given_ref(self):
+        spec = build_pip_spec("", ref="v0.2.0")
+        assert spec.endswith("git+https://github.com/EmaSleal/call-copilot.git@v0.2.0")
+
+
+class TestGetLatestReleaseTag:
+    def test_returns_highest_semver_tag(self, monkeypatch):
+        mock_run = MagicMock(return_value=MagicMock(
+            returncode=0,
+            stdout=(
+                "541135c9e2861a5cf4d9fd1f312312d3c84a4216\trefs/tags/v0.2.0\n"
+                "99c369f85d317b113ce89355a3b98528e6022c0\trefs/tags/v0.1.0\n"
+            ),
+        ))
+        monkeypatch.setattr("src.core.updater.subprocess.run", mock_run)
+
+        assert get_latest_release_tag() == "v0.2.0"
+        args = mock_run.call_args[0][0]
+        assert args[:4] == ["git", "ls-remote", "--tags", "--refs"]
+
+    def test_falls_back_to_main_when_no_tags_exist(self, monkeypatch):
+        mock_run = MagicMock(return_value=MagicMock(returncode=0, stdout=""))
+        monkeypatch.setattr("src.core.updater.subprocess.run", mock_run)
+
+        assert get_latest_release_tag() == "main"
+
+    def test_falls_back_to_main_on_network_failure(self, monkeypatch):
+        import subprocess as sp
+        mock_run = MagicMock(side_effect=sp.CalledProcessError(1, ["git"]))
+        monkeypatch.setattr("src.core.updater.subprocess.run", mock_run)
+
+        assert get_latest_release_tag() == "main"
 
 
 class TestReadInstallProfile:
@@ -62,6 +92,7 @@ class TestRunUpdate:
 
     def test_uninstalls_then_installs_without_force(self, monkeypatch):
         monkeypatch.setattr("src.core.updater.read_install_profile", lambda: "rag")
+        monkeypatch.setattr("src.core.updater.get_latest_release_tag", lambda: "v0.2.0")
         mock_run = MagicMock(return_value=MagicMock(returncode=0))
         monkeypatch.setattr("src.core.updater.subprocess.run", mock_run)
 
@@ -75,11 +106,13 @@ class TestRunUpdate:
         assert install_args[:2] == ["pipx", "install"]
         assert "--force" not in install_args
         assert install_args[2].startswith("call-copilot[rag] @ ")
+        assert install_args[2].endswith("@v0.2.0")
 
     def test_uninstall_failure_does_not_block_install(self, monkeypatch):
         """First run ever (nothing installed yet) — `pipx uninstall` of a
         non-existent package returns nonzero; that must not stop install."""
         monkeypatch.setattr("src.core.updater.read_install_profile", lambda: "")
+        monkeypatch.setattr("src.core.updater.get_latest_release_tag", lambda: "v0.2.0")
         mock_run = MagicMock(side_effect=[
             MagicMock(returncode=1),  # uninstall: "not installed"
             MagicMock(returncode=0),  # install: succeeds
@@ -91,6 +124,7 @@ class TestRunUpdate:
 
     def test_propagates_install_failure_exit_code(self, monkeypatch):
         monkeypatch.setattr("src.core.updater.read_install_profile", lambda: "")
+        monkeypatch.setattr("src.core.updater.get_latest_release_tag", lambda: "v0.2.0")
         mock_run = MagicMock(side_effect=[
             MagicMock(returncode=0),
             MagicMock(returncode=1),
@@ -101,6 +135,7 @@ class TestRunUpdate:
 
     def test_missing_pipx_returns_nonzero_without_raising(self, monkeypatch):
         monkeypatch.setattr("src.core.updater.read_install_profile", lambda: "")
+        monkeypatch.setattr("src.core.updater.get_latest_release_tag", lambda: "v0.2.0")
 
         def _raise(*a, **k):
             raise FileNotFoundError()
@@ -218,29 +253,36 @@ class TestRunVersion:
 class TestRunCheckUpdate:
     def test_up_to_date(self, monkeypatch, capsys):
         monkeypatch.setattr("src.core.updater.get_installed_commit", lambda: "abc123")
-        monkeypatch.setattr("src.core.updater.get_remote_commit", lambda: "abc123")
+        monkeypatch.setattr("src.core.updater.get_latest_release_tag", lambda: "v0.2.0")
+        monkeypatch.setattr("src.core.updater.get_remote_commit", lambda ref: "abc123")
 
         assert run_check_update() == 0
-        assert "al día" in capsys.readouterr().out
+        out = capsys.readouterr().out
+        assert "al día" in out
+        assert "v0.2.0" in out
 
     def test_update_available(self, monkeypatch, capsys):
         monkeypatch.setattr("src.core.updater.get_installed_commit", lambda: "abc123")
-        monkeypatch.setattr("src.core.updater.get_remote_commit", lambda: "def456")
+        monkeypatch.setattr("src.core.updater.get_latest_release_tag", lambda: "v0.3.0")
+        monkeypatch.setattr("src.core.updater.get_remote_commit", lambda ref: "def456")
 
         assert run_check_update() == 0
         out = capsys.readouterr().out
         assert "def456"[:12] in out or "def456" in out
+        assert "v0.3.0" in out
         assert "update" in out.lower()
 
     def test_no_network_returns_nonzero(self, monkeypatch, capsys):
         monkeypatch.setattr("src.core.updater.get_installed_commit", lambda: "abc123")
-        monkeypatch.setattr("src.core.updater.get_remote_commit", lambda: None)
+        monkeypatch.setattr("src.core.updater.get_latest_release_tag", lambda: "v0.2.0")
+        monkeypatch.setattr("src.core.updater.get_remote_commit", lambda ref: None)
 
         assert run_check_update() == 1
 
     def test_unknown_installed_commit_returns_nonzero(self, monkeypatch, capsys):
         monkeypatch.setattr("src.core.updater.get_installed_commit", lambda: None)
-        monkeypatch.setattr("src.core.updater.get_remote_commit", lambda: "def456")
+        monkeypatch.setattr("src.core.updater.get_latest_release_tag", lambda: "v0.2.0")
+        monkeypatch.setattr("src.core.updater.get_remote_commit", lambda ref: "def456")
 
         assert run_check_update() == 1
 

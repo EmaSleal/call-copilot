@@ -13,8 +13,19 @@ profiles) is safe.
 #>
 
 $RepoUrl = "https://github.com/EmaSleal/call-copilot.git"
-$Branch = "main"
 $AppHome = Join-Path $HOME ".call-copilot"
+
+function Get-LatestReleaseRef {
+    # Highest vX.Y.Z release tag (release-please's format), so installs
+    # are pinned/reproducible instead of tracking main's moving HEAD.
+    # Falls back to "main" when no tags exist yet or git can't reach the
+    # repo -- install/update should still work either way.
+    $tagLine = git ls-remote --tags --refs --sort=-v:refname $RepoUrl 'v*' 2>$null | Select-Object -First 1
+    if (-not $tagLine) { return "main" }
+    return ($tagLine -split "refs/tags/")[-1]
+}
+
+$Ref = Get-LatestReleaseRef
 
 function Read-PromptWithDefault {
     param([string]$Message, [string]$Default = "")
@@ -101,13 +112,13 @@ switch ($profileChoice) {
 
 # -- instalacion ---------------------------------------------------------------
 if ($extras) {
-    $spec = "call-copilot[$extras] @ git+$RepoUrl@$Branch"
+    $spec = "call-copilot[$extras] @ git+$RepoUrl@$Ref"
 } else {
-    $spec = "call-copilot @ git+$RepoUrl@$Branch"
+    $spec = "call-copilot @ git+$RepoUrl@$Ref"
 }
 
 Write-Host ""
-Write-Host "Instalando: $spec"
+Write-Host "Instalando ($Ref): $spec"
 # uninstall-then-install en vez de 'pipx install --force' -- mismo motivo que
 # en install.sh: falla en desinstalar un paquete que todavia no existe
 # (primera corrida), se ignora a proposito.
