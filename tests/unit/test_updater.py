@@ -7,10 +7,12 @@ isn't re-prompted every update).
 """
 
 import importlib.metadata
+from pathlib import Path
 from unittest.mock import MagicMock
 import pytest
 
 from src.core.updater import (
+    _pipx_venvs_dir,
     build_pip_spec,
     get_installed_commit,
     get_latest_release_tag,
@@ -122,17 +124,6 @@ class TestRunUpdate:
         assert run_update() == 0
         assert mock_run.call_count == 2
 
-    def test_propagates_install_failure_exit_code(self, monkeypatch):
-        monkeypatch.setattr("src.core.updater.read_install_profile", lambda: "")
-        monkeypatch.setattr("src.core.updater.get_latest_release_tag", lambda: "v0.2.0")
-        mock_run = MagicMock(side_effect=[
-            MagicMock(returncode=0),
-            MagicMock(returncode=1),
-        ])
-        monkeypatch.setattr("src.core.updater.subprocess.run", mock_run)
-
-        assert run_update() == 1
-
     def test_missing_pipx_returns_nonzero_without_raising(self, monkeypatch):
         monkeypatch.setattr("src.core.updater.read_install_profile", lambda: "")
         monkeypatch.setattr("src.core.updater.get_latest_release_tag", lambda: "v0.2.0")
@@ -143,6 +134,100 @@ class TestRunUpdate:
         monkeypatch.setattr("src.core.updater.subprocess.run", _raise)
 
         assert run_update() == 1
+
+
+class TestRunUpdateRetry:
+    """Windows-specific failure mode: antivirus/real-time scanning
+    transiently locks files mid-uninstall, leaving a half-deleted venv
+    that then makes the following install fail even though pipx reported
+    the uninstall as successful. run_update() force-deletes the leftover
+    venv and retries once — same fix a human would otherwise do by hand."""
+
+    def test_retries_once_after_cleaning_a_stale_venv(self, monkeypatch, tmp_path):
+        monkeypatch.setattr("src.core.updater.read_install_profile", lambda: "")
+        monkeypatch.setattr("src.core.updater.get_latest_release_tag", lambda: "v0.2.0")
+        monkeypatch.setattr("src.core.updater._pipx_venvs_dir", lambda: tmp_path)
+        mock_rmtree = MagicMock()
+        monkeypatch.setattr("src.core.updater.shutil.rmtree", mock_rmtree)
+        mock_run = MagicMock(side_effect=[
+            MagicMock(returncode=0),  # uninstall
+            MagicMock(returncode=1),  # install: fails (stale venv)
+            MagicMock(returncode=0),  # retry install: succeeds
+        ])
+        monkeypatch.setattr("src.core.updater.subprocess.run", mock_run)
+
+        assert run_update() == 0
+        assert mock_run.call_count == 3
+        mock_rmtree.assert_called_once_with(tmp_path / "call-copilot", ignore_errors=True)
+
+    def test_retry_failure_still_propagates_nonzero(self, monkeypatch, tmp_path):
+        monkeypatch.setattr("src.core.updater.read_install_profile", lambda: "")
+        monkeypatch.setattr("src.core.updater.get_latest_release_tag", lambda: "v0.2.0")
+        monkeypatch.setattr("src.core.updater._pipx_venvs_dir", lambda: tmp_path)
+        monkeypatch.setattr("src.core.updater.shutil.rmtree", MagicMock())
+        mock_run = MagicMock(side_effect=[
+            MagicMock(returncode=0),
+            MagicMock(returncode=1),
+            MagicMock(returncode=1),  # retry also fails — not our problem to hide
+        ])
+        monkeypatch.setattr("src.core.updater.subprocess.run", mock_run)
+
+        assert run_update() == 1
+        assert mock_run.call_count == 3
+
+    def test_does_not_retry_when_venvs_dir_cannot_be_determined(self, monkeypatch):
+        """pipx itself missing/broken -- retrying with an unknown venv
+        path would be guessing at a location to rm -rf. Just propagate."""
+        monkeypatch.setattr("src.core.updater.read_install_profile", lambda: "")
+        monkeypatch.setattr("src.core.updater.get_latest_release_tag", lambda: "v0.2.0")
+        monkeypatch.setattr("src.core.updater._pipx_venvs_dir", lambda: None)
+        mock_run = MagicMock(side_effect=[
+            MagicMock(returncode=0),
+            MagicMock(returncode=1),
+        ])
+        monkeypatch.setattr("src.core.updater.subprocess.run", mock_run)
+
+        assert run_update() == 1
+        assert mock_run.call_count == 2
+
+    def test_no_retry_when_install_succeeds_first_try(self, monkeypatch, tmp_path):
+        monkeypatch.setattr("src.core.updater.read_install_profile", lambda: "")
+        monkeypatch.setattr("src.core.updater.get_latest_release_tag", lambda: "v0.2.0")
+        mock_venvs_dir = MagicMock(return_value=tmp_path)
+        monkeypatch.setattr("src.core.updater._pipx_venvs_dir", mock_venvs_dir)
+        mock_run = MagicMock(return_value=MagicMock(returncode=0))
+        monkeypatch.setattr("src.core.updater.subprocess.run", mock_run)
+
+        assert run_update() == 0
+        assert mock_run.call_count == 2
+        mock_venvs_dir.assert_not_called()
+
+
+class TestPipxVenvsDir:
+    def test_returns_path_from_pipx_environment(self, monkeypatch):
+        mock_run = MagicMock(return_value=MagicMock(
+            returncode=0, stdout="/home/user/.local/share/pipx/venvs\n",
+        ))
+        monkeypatch.setattr("src.core.updater.subprocess.run", mock_run)
+
+        result = _pipx_venvs_dir()
+
+        assert result == Path("/home/user/.local/share/pipx/venvs")
+        assert mock_run.call_args[0][0] == ["pipx", "environment", "--value", "PIPX_LOCAL_VENVS"]
+
+    def test_returns_none_when_pipx_missing(self, monkeypatch):
+        def _raise(*a, **k):
+            raise FileNotFoundError()
+
+        monkeypatch.setattr("src.core.updater.subprocess.run", _raise)
+
+        assert _pipx_venvs_dir() is None
+
+    def test_returns_none_on_empty_output(self, monkeypatch):
+        mock_run = MagicMock(return_value=MagicMock(returncode=0, stdout=""))
+        monkeypatch.setattr("src.core.updater.subprocess.run", mock_run)
+
+        assert _pipx_venvs_dir() is None
 
 
 # ─────────────────────────────────────────────────────────────

@@ -5,7 +5,9 @@ uninstall, doctor. Dispatched from src/core/cli.py.
 
 import importlib.metadata
 import importlib.util
+import shutil
 import subprocess
+from pathlib import Path
 
 from src.core.paths import _is_dev_checkout, _REPO_ROOT, app_home
 
@@ -94,12 +96,34 @@ def get_remote_commit(ref: str = _FALLBACK_REF) -> str | None:
     return line.split()[0]
 
 
+def _pipx_venvs_dir() -> Path | None:
+    """Where pipx keeps its per-package venvs, straight from pipx itself
+    (portable across Windows/macOS/Linux — no hardcoded platform path)."""
+    try:
+        result = subprocess.run(
+            ["pipx", "environment", "--value", "PIPX_LOCAL_VENVS"],
+            capture_output=True, text=True, check=True, timeout=10,
+        )
+    except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
+        return None
+    value = result.stdout.strip()
+    return Path(value) if value else None
+
+
 def run_update() -> int:
     """Uninstall-then-install rather than `pipx install --force` — pipx's
     uv-backed venv creation refuses to clear a venv from a prior session,
     so --force fails outright on some setups. `pipx uninstall` on a
     not-yet-installed package returns nonzero; that's expected on a first
-    run and must not block the install that follows."""
+    run and must not block the install that follows.
+
+    On Windows, antivirus/real-time scanning can transiently lock files
+    mid-uninstall, leaving a half-deleted venv that then makes the
+    following install fail ("already seems to be installed") even though
+    pipx reported the uninstall as successful. When that happens, force-
+    delete the leftover venv directory ourselves and retry the install
+    once — same fix a human would do by hand, automated.
+    """
     extras = read_install_profile()
     ref = get_latest_release_tag()
     spec = build_pip_spec(extras, ref)
@@ -110,6 +134,15 @@ def run_update() -> int:
     except FileNotFoundError:
         print("pipx no está instalado — no se puede actualizar. Volvé a correr install.sh.")
         return 1
+
+    if result.returncode != 0:
+        venvs_dir = _pipx_venvs_dir()
+        if venvs_dir is not None:
+            print("La instalación falló — puede haber quedado un venv viejo trabado "
+                  "(permisos/antivirus). Lo limpio y reintento una vez...")
+            shutil.rmtree(venvs_dir / "call-copilot", ignore_errors=True)
+            result = subprocess.run(["pipx", "install", spec])
+
     return result.returncode
 
 
