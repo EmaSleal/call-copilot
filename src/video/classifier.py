@@ -282,3 +282,64 @@ def judge_category_duplicate(
     except Exception as e:
         logger.error("judge_category_duplicate failed: %s", e)
         return None
+
+
+_PARENT_SYSTEM = (
+    "You group existing content categories under ONE broader parent category. "
+    'Respond ONLY with valid JSON: {"name":"...","description":"..."}. '
+    "Rules: the name must be a broader umbrella that genuinely covers ALL the "
+    "listed categories, 1-3 words, in the same language as the listed categories. "
+    "The description is one general sentence defining the parent topic. Never "
+    "reuse one child's name verbatim, never invent a topic no child belongs to. "
+    "No text before or after the JSON."
+)
+
+
+def _build_parent_prompt(children: list[Category]) -> str:
+    children_str = "\n".join(
+        f"- ID {c.id}: {c.name} — {c.description}" for c in children
+    )
+    return (
+        f"Categories to group under one parent:\n{children_str}\n\n"
+        "Propose a broader parent category name and description that covers all of them."
+    )
+
+
+def _call_parent_llm(prompt: str, backend: str) -> str:
+    return _call_backend(
+        prompt, _PARENT_SYSTEM, backend,
+        temperature=0.2, max_tokens=192, json_mode=True, ollama_num_ctx=4096,
+    )
+
+
+def propose_parent_category(
+    children: list[Category],
+    existing: list[Category],
+) -> Optional[dict]:
+    """{"name", "description"} for a parent covering `children`, else None.
+
+    Fail-open like judge_category_duplicate (spec: LLM-generated parent
+    naming): any error, timeout, unparseable output, blank name, or a name
+    colliding (case-insensitive) with an existing category name returns
+    None — that cluster is reported and skipped by the caller, never
+    written with a junk name.
+    """
+    backend = os.getenv("LLM_BACKEND", "ollama")
+    prompt = _build_parent_prompt(children)
+    existing_names = {c.name.strip().lower() for c in existing}
+
+    try:
+        raw = _call_parent_llm(prompt, backend)
+        data = json.loads(raw)
+        name = data.get("name", "")
+        description = data.get("description", "")
+        if not isinstance(name, str) or not name.strip():
+            return None
+        if not isinstance(description, str) or not description.strip():
+            return None
+        if name.strip().lower() in existing_names:
+            return None
+        return {"name": name.strip(), "description": description.strip()}
+    except Exception as e:
+        logger.error("propose_parent_category failed: %s", e)
+        return None
