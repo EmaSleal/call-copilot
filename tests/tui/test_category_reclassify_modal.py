@@ -127,3 +127,141 @@ class TestReclassifyCategory:
 
         assert moved == 0
         mock_update.assert_not_called()
+
+
+class TestVerdictLabel:
+    """Same duplicate-label rendering as VideoTab's suggestion flow (spec:
+    Duplicate shown with override) — this modal's own private copy, per
+    design's "drop the cross-TUI import" instruction (A4): both screens call
+    the one shared `dedup_suggestions()` for verdict computation, but each
+    owns its thin presentation wiring rather than importing it from the
+    other TUI module."""
+
+    def test_new_suggestion_label_is_plain_name_and_description(self):
+        from src.processing.category_dedup import DedupVerdict
+        from src.tui.screens.category_reclassify_modal import _verdict_label
+
+        verdict = DedupVerdict(
+            suggestion={"name": "Marketing", "description": "Campañas"},
+            match=None, distance=None, backend="none",
+        )
+
+        assert _verdict_label(verdict) == "Marketing — Campañas"
+
+    def test_duplicate_label_shows_the_matched_category(self):
+        from src.db.database import Category
+        from src.processing.category_dedup import DedupVerdict
+        from src.tui.screens.category_reclassify_modal import _verdict_label
+
+        match = Category(id=9, name="Jerarquía visual", description="", color="#000")
+        verdict = DedupVerdict(
+            suggestion={"name": "Jerarquías", "description": "d"},
+            match=match, distance=None, backend="llm-judge",
+        )
+
+        assert _verdict_label(verdict) == "≈ Jerarquías — Ya existe: Jerarquía visual"
+
+    def test_embeddings_duplicate_label_includes_distance(self):
+        from src.db.database import Category
+        from src.processing.category_dedup import DedupVerdict
+        from src.tui.screens.category_reclassify_modal import _verdict_label
+
+        match = Category(id=9, name="Jerarquía visual", description="", color="#000")
+        verdict = DedupVerdict(
+            suggestion={"name": "Jerarquías", "description": "d"},
+            match=match, distance=0.123, backend="embeddings",
+        )
+
+        assert _verdict_label(verdict) == "≈ Jerarquías — Ya existe: Jerarquía visual (d=0.12)"
+
+
+class TestCreateCheckedSuggestions:
+    """`_create_checked_suggestions` creates every checked verdict regardless
+    of its match (spec: User overrides), skipping only an actual UNIQUE-name
+    collision at write time (spec: Fail-open / never silently dropped)."""
+
+    def test_new_suggestion_is_added(self):
+        from src.db.database import Category
+        from src.processing.category_dedup import DedupVerdict
+        from src.tui.screens.category_reclassify_modal import _create_checked_suggestions
+
+        verdict = DedupVerdict(
+            suggestion={"name": "Marketing", "description": "d"},
+            match=None, distance=None, backend="none",
+        )
+        created = Category(id=1, name="Marketing", description="d", color="#6366f1")
+
+        with (
+            patch(
+                "src.tui.screens.category_reclassify_modal.db.create_category",
+                return_value=created,
+            ) as mock_create,
+            patch(
+                "src.tui.screens.category_reclassify_modal.sync_category_embedding"
+            ) as mock_sync,
+        ):
+            added, forced, skipped = asyncio.run(
+                _create_checked_suggestions([0], [verdict])
+            )
+
+        assert added == ["Marketing"]
+        assert forced == []
+        assert skipped == []
+        mock_create.assert_called_once_with("Marketing", "d")
+        mock_sync.assert_called_once_with(created)
+
+    def test_checked_duplicate_is_force_created(self):
+        from src.db.database import Category
+        from src.processing.category_dedup import DedupVerdict
+        from src.tui.screens.category_reclassify_modal import _create_checked_suggestions
+
+        match = Category(id=9, name="Jerarquía visual", description="", color="#000")
+        verdict = DedupVerdict(
+            suggestion={"name": "Jerarquías", "description": "d"},
+            match=match, distance=0.1, backend="embeddings",
+        )
+        created = Category(id=2, name="Jerarquías", description="d", color="#6366f1")
+
+        with (
+            patch(
+                "src.tui.screens.category_reclassify_modal.db.create_category",
+                return_value=created,
+            ),
+            patch("src.tui.screens.category_reclassify_modal.sync_category_embedding"),
+        ):
+            added, forced, skipped = asyncio.run(
+                _create_checked_suggestions([0], [verdict])
+            )
+
+        assert added == []
+        assert forced == ["Jerarquías"]
+        assert skipped == []
+
+    def test_integrity_error_is_skipped_not_raised(self):
+        import sqlite3
+
+        from src.processing.category_dedup import DedupVerdict
+        from src.tui.screens.category_reclassify_modal import _create_checked_suggestions
+
+        verdict = DedupVerdict(
+            suggestion={"name": "Marketing", "description": "d"},
+            match=None, distance=None, backend="none",
+        )
+
+        with (
+            patch(
+                "src.tui.screens.category_reclassify_modal.db.create_category",
+                side_effect=sqlite3.IntegrityError("UNIQUE constraint failed"),
+            ),
+            patch(
+                "src.tui.screens.category_reclassify_modal.sync_category_embedding"
+            ) as mock_sync,
+        ):
+            added, forced, skipped = asyncio.run(
+                _create_checked_suggestions([0], [verdict])
+            )
+
+        assert added == []
+        assert forced == []
+        assert skipped == ["Marketing"]
+        mock_sync.assert_not_called()
