@@ -26,6 +26,11 @@ textual>=0.60.0
 python-dotenv>=1.0
 
 # ── RAG ────────────────────────────────────────────────────
+# Optional per pyproject.toml's `rag`/`full` extras (src/rag/*.py all import
+# it lazily and degrade to a no-op without it — live in-call RAG, the Tools
+# Catalog, semantic segment search, and category dedup all keep working
+# minus their semantic-similarity feature). Pinned here too so a plain
+# `pip install -r requirements.txt` gets those features by default.
 chromadb>=0.5.0
 
 # ── Testing ─────────────────────────────────────────────────

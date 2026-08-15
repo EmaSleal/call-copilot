@@ -42,9 +42,11 @@ dependencies = [
 whisper-local = ["faster-whisper>=1.0"]
 # YouTube/video download + batch transcription (Video tab).
 video = ["yt-dlp>=2024.1.0", "openai-whisper>=20231117"]
-# Persistent semantic search: live in-call RAG + the Tools catalog. Lazily
-# imported (src/rag/chroma_store.py, src/rag/tools_store.py) — the app runs
-# fine without it, those features just no-op.
+# Persistent semantic search: live in-call RAG, the Tools catalog, segment
+# search, and category dedup. Lazily imported (src/rag/chroma_store.py,
+# src/rag/tools_store.py, src/rag/segments_store.py, src/rag/categories_store.py)
+# — the app runs fine without it, those features just no-op (category dedup
+# falls back to the LLM-judge path, see src/processing/category_dedup.py).
 rag = ["chromadb>=0.5.0"]
 # Named profile bundling every extra above. Listed directly (not as a
 # self-referential "call-copilot[...]" extra) so it resolves the same way
