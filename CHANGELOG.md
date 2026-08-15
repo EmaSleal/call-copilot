@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/EmaSleal/call-copilot/compare/v0.2.0...v0.3.0) (2026-08-15)
+
+
+### Features
+
+* **updater:** auto-retry update once after cleaning a stale pipx venv ([f230ae0](https://github.com/EmaSleal/call-copilot/commit/f230ae012b650174327c449994f5a21fcf6da353))
+
 ## [0.2.0](https://github.com/EmaSleal/call-copilot/compare/v0.1.0...v0.2.0) (2026-08-15)
 
 
