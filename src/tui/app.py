@@ -66,7 +66,8 @@ class UnifiedApp(App):
     RichLog { height: 10; border: solid #334155; background: #1e293b; padding: 0 1; }
     #suggestion-live { height: 5; border: dashed #4f46e5; background: #1e1e2e; padding: 0 1; color: #e2e8f0; }
     DataTable { height: 15; border: solid #334155; background: #1e293b; }
-    #call-buttons { margin-bottom: 1; }
+    #audio-sink-row { height: 3; margin-bottom: 1; }
+    #call-buttons { height: 3; margin-bottom: 1; }
     #cat-layout { height: 1fr; }
     #cat-list-panel { width: 50%; padding-right: 2; }
     #cat-form-panel { width: 50%; border-left: solid #334155; padding-left: 2; }
