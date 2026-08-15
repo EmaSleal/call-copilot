@@ -8,6 +8,7 @@ its own modal (same precedent as SettingsScreen/ProfileManagerScreen).
 """
 
 import asyncio
+import sqlite3
 
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
@@ -15,8 +16,55 @@ from textual.screen import ModalScreen
 from textual.widgets import Button, Label, Select, SelectionList
 
 import src.db.database as db
+from src.processing.category_dedup import DedupVerdict, dedup_suggestions, sync_category_embedding
 from src.tui.messages import CategoriesChanged
-from src.tui.tabs.video import _partition_new_suggestions
+
+
+def _verdict_label(verdict: DedupVerdict) -> str:
+    """Option label for the suggestions `SelectionList` — identical wiring
+    to `src.tui.tabs.video._verdict_label` (spec: Duplicate shown with
+    override). Kept as its own private copy rather than a cross-TUI import:
+    design A4 explicitly removed the modal's prior dependency on
+    `video._partition_new_suggestions` as a smell; both screens instead
+    share the one `dedup_suggestions()` verdict-computation function.
+
+    Pure function — no side effects, easy to test without Textual.
+    """
+    s = verdict.suggestion
+    if verdict.match is None:
+        return f"{s['name']} — {s['description']}"
+    label = f"≈ {s['name']} — Ya existe: {verdict.match.name}"
+    if verdict.backend == "embeddings" and verdict.distance is not None:
+        label += f" (d={verdict.distance:.2f})"
+    return label
+
+
+async def _create_checked_suggestions(
+    selected_indices, verdicts: list[DedupVerdict]
+) -> tuple[list[str], list[str], list[str]]:
+    """Create every checked suggestion, regardless of its dedup verdict —
+    checking a suggestion labelled as a duplicate IS the force-create
+    override (spec: User overrides). `db.create_category` is UNIQUE-name
+    safe: an actual collision at write time is reported as skipped instead
+    of crashing the TUI (spec: Duplicates surfaced, never silently
+    dropped). Returns `(added, forced, skipped)` category names. Identical
+    wiring to `src.tui.tabs.video._create_checked_suggestions`, see
+    `_verdict_label` above for why this is a private copy, not an import.
+    """
+    added, forced, skipped = [], [], []
+    for i in selected_indices:
+        if i >= len(verdicts):
+            continue
+        verdict = verdicts[i]
+        s = verdict.suggestion
+        try:
+            created = db.create_category(s["name"], s["description"])
+        except sqlite3.IntegrityError:
+            skipped.append(s["name"])
+            continue
+        (forced if verdict.match is not None else added).append(s["name"])
+        sync_category_embedding(created)
+    return added, forced, skipped
 
 
 async def _reclassify_category(category_id: int) -> int:
@@ -104,6 +152,7 @@ class CategoryReclassifyModal(ModalScreen):
     def __init__(self) -> None:
         super().__init__()
         self._suggestions: list[dict] = []
+        self._verdicts: list[DedupVerdict] = []
         self._target_category_id: int | None = None
         self._changed = False
 
@@ -167,19 +216,23 @@ class CategoryReclassifyModal(ModalScreen):
                 return
 
             loop = asyncio.get_running_loop()
-            suggestions = await loop.run_in_executor(
-                None, lambda: suggest_new_categories(all_texts, categories)
-            )
-            self._suggestions = suggestions
+
+            def _suggest_and_dedup():
+                suggestions = suggest_new_categories(all_texts, categories)
+                return dedup_suggestions(suggestions, categories)
+
+            verdicts = await loop.run_in_executor(None, _suggest_and_dedup)
+            self._suggestions = [v.suggestion for v in verdicts]
+            self._verdicts = verdicts
             self._target_category_id = category_id
             sel.clear_options()
             btn_add.disabled = True
-            if suggestions:
-                for i, s in enumerate(suggestions):
-                    sel.add_option((f"{s['name']} — {s['description']}", i))
+            if verdicts:
+                for i, v in enumerate(verdicts):
+                    sel.add_option((_verdict_label(v), i))
                 btn_add.disabled = False
                 fb.update(
-                    f"[green]{len(suggestions)} sugerencia(s) de {len(all_texts)} fragmentos."
+                    f"[green]{len(verdicts)} sugerencia(s) de {len(all_texts)} fragmentos."
                     f" Marcá las que querés agregar.[/green]"
                 )
             else:
@@ -195,30 +248,28 @@ class CategoryReclassifyModal(ModalScreen):
             fb.update("[yellow]Marcá al menos una sugerencia antes de agregar.[/yellow]")
             return
 
-        existing_names = {c.name for c in db.get_categories()}
-        selected = [
-            self._suggestions[i] for i in selected_indices if i < len(self._suggestions)
-        ]
-        new_ones, duplicates = _partition_new_suggestions(selected, existing_names)
-
-        for s in new_ones:
-            db.create_category(s["name"], s["description"])
+        added, forced, skipped = await _create_checked_suggestions(
+            selected_indices, self._verdicts
+        )
 
         remaining = [
-            s for i, s in enumerate(self._suggestions) if i not in set(selected_indices)
+            v for i, v in enumerate(self._verdicts) if i not in set(selected_indices)
         ]
-        self._suggestions = remaining
+        self._verdicts = remaining
+        self._suggestions = [v.suggestion for v in remaining]
         sel.clear_options()
-        for i, s in enumerate(remaining):
-            sel.add_option((f"{s['name']} — {s['description']}", i))
+        for i, v in enumerate(remaining):
+            sel.add_option((_verdict_label(v), i))
         if not remaining:
             self.query_one("#btn-reclassify-add", Button).disabled = True
 
         parts = []
-        if new_ones:
-            parts.append(f"Agregadas: {', '.join(s['name'] for s in new_ones)}.")
-        if duplicates:
-            parts.append(f"Ya existían (omitidas): {', '.join(s['name'] for s in duplicates)}.")
+        if added:
+            parts.append(f"Agregadas: {', '.join(added)}.")
+        if forced:
+            parts.append(f"Forzadas pese a duplicado: {', '.join(forced)}.")
+        if skipped:
+            parts.append(f"Omitidas (nombre ya existe): {', '.join(skipped)}.")
         self.post_message(CategoriesChanged())
         self._refresh_category_select()
         self._changed = True

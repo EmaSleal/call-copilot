@@ -1,11 +1,14 @@
 """Tab 4: Categorías — CRUD de taxonomía."""
 
+from typing import Optional
+
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
-from textual.widgets import Button, DataTable, Input, Label, TabPane
+from textual.widgets import Button, DataTable, Input, Label, Select, TabPane
 
 import src.db.database as db
 from src.db.database import Category
+from src.processing.category_dedup import forget_category_embedding, sync_category_embedding
 
 
 def build_category_tree(categories: list[Category]) -> list[tuple[Category, int]]:
@@ -35,6 +38,66 @@ def build_category_tree(categories: list[Category]) -> list[tuple[Category, int]
     return result
 
 
+def parent_select_options(
+    categories: list[Category], editing_id: Optional[int]
+) -> list[tuple[str, int]]:
+    """Options for `Select(id="cat-parent")`: top-level-only (single-level
+    hierarchy, design A1/A3), excluding the category currently being edited
+    (a category cannot be its own parent). `editing_id=None` for a new
+    category excludes nothing.
+
+    Pure function — no side effects, easy to test without Textual.
+    """
+    return [
+        (c.name, c.id)
+        for c in categories
+        if c.parent_id is None and c.id != editing_id
+    ]
+
+
+def has_children(categories: list[Category], cat_id: int) -> bool:
+    """True when `cat_id` is the parent of at least one other category —
+    used to disable the parent picker while editing it (a category that
+    already has children cannot itself become a subcategory, design A3).
+
+    Pure function — no side effects, easy to test without Textual.
+    """
+    return any(c.parent_id == cat_id for c in categories)
+
+
+def format_category_row(category: Category, depth: int) -> str:
+    """Display label for a `build_category_tree()` row: depth 0 is the
+    plain name, depth 1 (a subcategory) is indented with a corner marker
+    (spec: Grouped list).
+
+    Pure function — no side effects, easy to test without Textual.
+    """
+    return f"└─ {category.name}" if depth else category.name
+
+
+def save_category_feedback(is_edit: bool, save_fn) -> tuple[bool, str, Optional[Category]]:
+    """Invoke `save_fn()` — a zero-arg callable already bound to
+    `db.create_category(...)`/`db.update_category(...)` args, returning the
+    resulting `Category`. Catches the DAO's single-level-hierarchy
+    `ValueError` guard (design A3) and surfaces it as feedback instead of
+    letting it propagate and crash the TUI (spec: DAO ValueError surfaced
+    as feedback). Returns `(success, feedback_markup, saved_category)`.
+
+    Pure function — no side effects beyond calling `save_fn()`, easy to
+    test without Textual.
+    """
+    try:
+        saved = save_fn()
+    except ValueError as e:
+        return False, f"[red]{e}[/red]", None
+    message = (
+        "[green]Categoría actualizada.[/green]"
+        if is_edit
+        else "[green]Categoría creada.[/green]"
+    )
+    return True, message, saved
+
+
 class CategoriesTab(TabPane):
     def __init__(self):
         super().__init__("🏷  Categorías", id="tab-categories")
@@ -60,6 +123,13 @@ class CategoriesTab(TabPane):
                 yield Input(id="cat-desc", placeholder="Descripción breve")
                 yield Label("Color (hex):")
                 yield Input(id="cat-color", placeholder="#6366f1", value="#6366f1")
+                yield Label("Categoría padre:")
+                yield Select(
+                    [],
+                    id="cat-parent",
+                    allow_blank=True,
+                    prompt="— Sin padre (nivel superior) —",
+                )
                 with Horizontal():
                     yield Button("Guardar", id="btn-save-cat", variant="primary")
                     yield Button("Cancelar", id="btn-cancel-cat", variant="default")
@@ -80,10 +150,21 @@ class CategoriesTab(TabPane):
     def _refresh(self) -> None:
         table = self.query_one("#cat-table", DataTable)
         table.clear()
-        for c in db.get_categories():
-            table.add_row(str(c.id), c.name, c.color, c.description[:40], key=str(c.id))
+        categories = db.get_categories()
+        for c, depth in build_category_tree(categories):
+            table.add_row(
+                str(c.id), format_category_row(c, depth), c.color, c.description[:40], key=str(c.id)
+            )
         self._selected_id = None
         self._toggle_edit_buttons(False)
+        self._refresh_parent_picker(categories, editing_id=None)
+
+    def _refresh_parent_picker(
+        self, categories: list[Category], editing_id: Optional[int]
+    ) -> None:
+        select = self.query_one("#cat-parent", Select)
+        select.set_options(parent_select_options(categories, editing_id))
+        select.disabled = editing_id is not None and has_children(categories, editing_id)
 
     def _toggle_edit_buttons(self, enabled: bool) -> None:
         self.query_one("#btn-edit-cat", Button).disabled = not enabled
@@ -100,14 +181,19 @@ class CategoriesTab(TabPane):
             self._clear_form()
             self._selected_id = None
         elif bid == "btn-edit-cat" and self._selected_id:
-            cats = {c.id: c for c in db.get_categories()}
+            categories = db.get_categories()
+            cats = {c.id: c for c in categories}
             cat = cats.get(self._selected_id)
             if cat:
                 self.query_one("#cat-name", Input).value = cat.name
                 self.query_one("#cat-desc", Input).value = cat.description
                 self.query_one("#cat-color", Input).value = cat.color
+                self._refresh_parent_picker(categories, editing_id=self._selected_id)
+                select = self.query_one("#cat-parent", Select)
+                select.value = cat.parent_id if cat.parent_id is not None else Select.BLANK
         elif bid == "btn-delete-cat" and self._selected_id:
             db.delete_category(self._selected_id)
+            forget_category_embedding(self._selected_id)
             self._refresh()
             self.query_one("#cat-feedback", Label).update(
                 "[green]Categoría eliminada.[/green]"
@@ -125,12 +211,25 @@ class CategoriesTab(TabPane):
         if not name:
             fb.update("[red]El nombre no puede estar vacío.[/red]")
             return
-        if self._selected_id:
-            db.update_category(self._selected_id, name, desc, color)
-            fb.update("[green]Categoría actualizada.[/green]")
+
+        parent_select = self.query_one("#cat-parent", Select)
+        parent_id = None if parent_select.is_blank() else int(parent_select.value)
+        selected_id = self._selected_id
+        is_edit = bool(selected_id)
+
+        if is_edit:
+            def save_fn() -> Category:
+                db.update_category(selected_id, name, desc, color, parent_id)
+                return Category(id=selected_id, name=name, description=desc, color=color, parent_id=parent_id)
         else:
-            db.create_category(name, desc, color)
-            fb.update("[green]Categoría creada.[/green]")
+            def save_fn() -> Category:
+                return db.create_category(name, desc, color, parent_id)
+
+        success, message, saved = save_category_feedback(is_edit, save_fn)
+        fb.update(message)
+        if not success:
+            return
+        sync_category_embedding(saved)
         self._refresh()
         self._clear_form()
 
@@ -138,3 +237,6 @@ class CategoriesTab(TabPane):
         self.query_one("#cat-name", Input).value = ""
         self.query_one("#cat-desc", Input).value = ""
         self.query_one("#cat-color", Input).value = "#6366f1"
+        select = self.query_one("#cat-parent", Select)
+        select.set_options(parent_select_options(db.get_categories(), editing_id=None))
+        select.value = Select.BLANK
