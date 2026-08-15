@@ -70,6 +70,38 @@ class TestGetCallSegmentsByCategoryGlobal:
         assert patched_db.get_call_segments_by_category_global(cat.id) == []
 
 
+class TestDeleteCategory:
+    def test_deleting_category_referenced_by_call_segments_nulls_it_out(self, patched_db):
+        """Spec: Delete category referenced by call_segments — under
+        PRAGMA foreign_keys=ON, deleting a category still referenced by a
+        call_segments row must not raise an FK violation, and that row's
+        category_id must become NULL."""
+        from src.db.database import CallSegment
+
+        cat = patched_db.create_category("Categoría Test", "desc")
+        cs = patched_db.create_call_session(context="ctx", transcript_path="whisper-text/x.txt")
+        seg_id = patched_db.save_call_segment(
+            CallSegment(id=None, call_session_id=cs.id, sort_order=0, text="idea", category_id=cat.id)
+        )
+
+        patched_db.delete_category(cat.id)
+
+        results = {s.id: s for s in patched_db.get_call_segments(cs.id)}
+        assert results[seg_id].category_id is None
+
+    def test_deleting_parent_category_promotes_children_to_top_level(self, patched_db):
+        """Spec: Delete parent promotes children — children keep existing,
+        never cascade-deleted, with parent_id reset to NULL."""
+        parent = patched_db.create_category("Diseño UI/UX", "desc padre")
+        child = patched_db.create_category("Tipografía", "desc hijo", parent_id=parent.id)
+
+        patched_db.delete_category(parent.id)
+
+        remaining = {c.id: c for c in patched_db.get_categories()}
+        assert child.id in remaining
+        assert remaining[child.id].parent_id is None
+
+
 class TestUpdateCallSegmentCategory:
     def test_updates_category_id(self, patched_db):
         from src.db.database import CallSegment
