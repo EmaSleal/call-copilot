@@ -40,8 +40,9 @@ dependencies = [
 # Local Whisper STT backend (STT_BACKEND=whisper_local) — alternative to the
 # default Deepgram (cloud, already covered by the base `websockets` dep).
 whisper-local = ["faster-whisper>=1.0"]
-# YouTube/video download + batch transcription (Video tab).
-video = ["yt-dlp>=2024.1.0", "openai-whisper>=20231117"]
+# YouTube/video download + batch transcription (Video tab). imageio-ffmpeg
+# bundles a portable ffmpeg binary — no system install / PATH entry needed.
+video = ["yt-dlp>=2024.1.0", "openai-whisper>=20231117", "imageio-ffmpeg>=0.5.0"]
 # Persistent semantic search: live in-call RAG, the Tools catalog, segment
 # search, and category dedup. Lazily imported (src/rag/chroma_store.py,
 # src/rag/tools_store.py, src/rag/segments_store.py, src/rag/categories_store.py)
@@ -55,6 +56,7 @@ full = [
     "faster-whisper>=1.0",
     "yt-dlp>=2024.1.0",
     "openai-whisper>=20231117",
+    "imageio-ffmpeg>=0.5.0",
     "chromadb>=0.5.0",
 ]
 

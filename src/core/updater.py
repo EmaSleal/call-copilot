@@ -161,6 +161,7 @@ def run_doctor() -> int:
         ("whisper-local (faster-whisper)", "faster_whisper"),
         ("video (yt-dlp)", "yt_dlp"),
         ("video (openai-whisper)", "whisper"),
+        ("video (imageio-ffmpeg)", "imageio_ffmpeg"),
     ):
         status = "instalado" if _module_available(module_name) else "no instalado"
         print(f"  {label}: {status}")

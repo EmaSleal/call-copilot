@@ -23,6 +23,13 @@ function Read-PromptWithDefault {
     return $reply
 }
 
+# Todo el proceso vive en esta funcion (en vez de a nivel de script) porque
+# el script se corre con 'irm ... | iex': ese codigo se ejecuta en el mismo
+# scope de la consola interactiva, asi que un 'exit' ahi adentro no corta
+# solo el script -- corta la sesion de PowerShell entera y cierra la
+# ventana antes de que puedas leer el error. Adentro de una funcion,
+# 'return' corta solo la funcion.
+function Invoke-Install {
 Write-Host "==============================================="
 Write-Host "  Call Copilot - instalador"
 Write-Host "==============================================="
@@ -38,27 +45,27 @@ foreach ($candidate in @("python", "py")) {
 }
 if (-not $pythonCmd) {
     Write-Error "python no esta instalado. Instalalo desde python.org o la Microsoft Store y volve a correr este script."
-    exit 1
+    return 1
 }
 
 $pyVersionOutput = & $pythonCmd -c "import sys; print(f'{sys.version_info[0]}.{sys.version_info[1]}')"
 $pyMajor, $pyMinor = $pyVersionOutput.Split(".")
 if ([int]$pyMajor -lt 3 -or ([int]$pyMajor -eq 3 -and [int]$pyMinor -lt 10)) {
     Write-Error "Se requiere Python >= 3.10 (encontrado $pyVersionOutput)."
-    exit 1
+    return 1
 }
 
 # -- pipx --------------------------------------------------------------------
 if (-not (Get-Command pipx -ErrorAction SilentlyContinue)) {
     Write-Host "pipx no esta instalado -- instalando con pip..."
     & $pythonCmd -m pip install --user pipx
-    if ($LASTEXITCODE -ne 0) { exit 1 }
+    if ($LASTEXITCODE -ne 0) { return 1 }
     & $pythonCmd -m pipx ensurepath
-    if ($LASTEXITCODE -ne 0) { exit 1 }
+    if ($LASTEXITCODE -ne 0) { return 1 }
     Write-Host ""
     Write-Host "pipx se instalo. Puede que necesites abrir una terminal nueva"
     Write-Host "para que 'pipx' quede en el PATH. Volve a correr este script despues de eso."
-    exit 0
+    return 0
 }
 
 # -- perfil de instalacion ----------------------------------------------------
@@ -106,7 +113,7 @@ Write-Host "Instalando: $spec"
 # (primera corrida), se ignora a proposito.
 pipx uninstall call-copilot *> $null
 pipx install $spec
-if ($LASTEXITCODE -ne 0) { exit 1 }
+if ($LASTEXITCODE -ne 0) { return 1 }
 
 New-Item -ItemType Directory -Force -Path $AppHome | Out-Null
 Set-Content -Path (Join-Path $AppHome "install-profile") -Value $extras -NoNewline
@@ -121,3 +128,18 @@ Write-Host "  call-copilot check-update   - avisa si hay una version nueva, sin 
 Write-Host "  call-copilot update         - instala la ultima version"
 Write-Host "  call-copilot doctor         - diagnostico (pipx, Python, extras, GPU)"
 Write-Host "  call-copilot uninstall      - desinstala (tu config/datos en ~/.call-copilot quedan)"
+
+return 0
+}
+
+$exitCode = 1
+try {
+    $exitCode = Invoke-Install
+} catch {
+    Write-Host ""
+    Write-Host "Error inesperado: $_" -ForegroundColor Red
+    $exitCode = 1
+} finally {
+    Write-Host ""
+    Read-Host "Presiona Enter para cerrar esta ventana"
+}

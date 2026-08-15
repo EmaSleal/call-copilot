@@ -9,9 +9,11 @@ actualizar la barra de progreso de la TUI en tiempo real.
 """
 
 import asyncio
+import importlib.util
 import logging
 import os
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 from typing import Callable, Optional
@@ -47,6 +49,8 @@ def run_pipeline(
         logger.info("[%.0f%%] %s", pct * 100, msg)
         if on_progress:
             on_progress(msg, pct)
+
+    _check_dependencies()
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -143,10 +147,45 @@ def _index_saved_segments(session_id: int, segments: list[Segment]) -> None:
 # Helpers internos
 # ─────────────────────────────────────────────────────────────
 
+def _check_dependencies() -> None:
+    """Valida que yt-dlp y ffmpeg estén disponibles antes de arrancar.
+
+    Ambos se resuelven como paquetes Python del venv actual (ver
+    _yt_dlp_cmd/_ffmpeg_path), no como binarios de PATH — así funcionan
+    igual instalados via pip directo o via pipx (que no expone en PATH los
+    entry points de las dependencias de call-copilot, solo los suyos
+    propios). Sin este chequeo, la falta de alguno recién se manifiesta
+    en el primer subprocess.run con un error críptico (p. ej. WinError 2
+    en Windows) que no dice qué falta ni cómo resolverlo.
+    """
+    missing = []
+    if importlib.util.find_spec("yt_dlp") is None:
+        missing.append("yt-dlp")
+    if importlib.util.find_spec("imageio_ffmpeg") is None:
+        missing.append("imageio-ffmpeg (empaqueta ffmpeg)")
+    if missing:
+        raise RuntimeError(
+            f"Faltan dependencias del extra 'video': {', '.join(missing)}. "
+            "Reinstalá con el perfil Completo o corré: "
+            "pip install -U yt-dlp imageio-ffmpeg"
+        )
+
+
+def _yt_dlp_cmd() -> list[str]:
+    """Invoca yt-dlp como módulo del venv actual en vez de un binario de
+    PATH — ver _check_dependencies."""
+    return [sys.executable, "-m", "yt_dlp"]
+
+
+def _ffmpeg_path() -> str:
+    import imageio_ffmpeg
+    return imageio_ffmpeg.get_ffmpeg_exe()
+
+
 def _get_title(url: str) -> str:
     try:
         result = subprocess.run(
-            ["yt-dlp", "--print", "title", "--no-playlist", url],
+            _yt_dlp_cmd() + ["--print", "title", "--no-playlist", url],
             capture_output=True, text=True, timeout=30
         )
         title = result.stdout.strip()
@@ -157,8 +196,8 @@ def _get_title(url: str) -> str:
 
 def _download_audio(url: str, out_dir: Path) -> Path:
     audio_path = out_dir / "audio.mp3"
-    subprocess.run([
-        "yt-dlp", "-x", "--audio-format", "mp3",
+    subprocess.run(_yt_dlp_cmd() + [
+        "-x", "--audio-format", "mp3", "--ffmpeg-location", _ffmpeg_path(),
         "--no-playlist", "-o", str(audio_path), url
     ], check=True, capture_output=True)
     return audio_path
@@ -167,8 +206,8 @@ def _download_audio(url: str, out_dir: Path) -> Path:
 def _download_video(url: str, out_dir: Path) -> Optional[Path]:
     video_path = out_dir / "video.mp4"
     try:
-        subprocess.run([
-            "yt-dlp", "-f", "mp4",
+        subprocess.run(_yt_dlp_cmd() + [
+            "-f", "mp4", "--ffmpeg-location", _ffmpeg_path(),
             "--no-playlist", "-o", str(video_path), url
         ], check=True, capture_output=True, timeout=300)
         return video_path
@@ -294,7 +333,7 @@ def _extract_keyframe(video_path: Optional[Path], ts: float,
     frame_path = out_dir / f"frame_{index:04d}.jpg"
     try:
         subprocess.run([
-            "ffmpeg", "-y", "-ss", str(ts),
+            _ffmpeg_path(), "-y", "-ss", str(ts),
             "-i", str(video_path),
             "-frames:v", "1", "-q:v", "3",
             str(frame_path)
