@@ -124,7 +124,20 @@ Write-Host "Instalando ($Ref): $spec"
 # (primera corrida), se ignora a proposito.
 pipx uninstall call-copilot *> $null
 pipx install $spec
-if ($LASTEXITCODE -ne 0) { return 1 }
+if ($LASTEXITCODE -ne 0) {
+    # El antivirus/escaneo en tiempo real puede bloquear momentaneamente
+    # archivos durante el uninstall, dejando un venv a medio borrar que
+    # hace fallar el install siguiente aunque pipx haya reportado el
+    # uninstall como exitoso. Lo borramos a mano y reintentamos una sola
+    # vez -- mismo arreglo que haria un humano.
+    $venvsDir = (pipx environment --value PIPX_LOCAL_VENVS 2>$null)
+    if ($venvsDir) {
+        Write-Host "La instalacion fallo -- puede haber quedado un venv viejo trabado (permisos/antivirus). Lo limpio y reintento una vez..."
+        Remove-Item -Recurse -Force (Join-Path $venvsDir "call-copilot") -ErrorAction SilentlyContinue
+        pipx install $spec
+    }
+    if ($LASTEXITCODE -ne 0) { return 1 }
+}
 
 New-Item -ItemType Directory -Force -Path $AppHome | Out-Null
 Set-Content -Path (Join-Path $AppHome "install-profile") -Value $extras -NoNewline

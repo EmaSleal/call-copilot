@@ -149,7 +149,26 @@ echo "Instalando ($REF): $SPEC"
 # some setups, so --force fails outright there. Uninstalling a package
 # that isn't installed yet (first run) exits nonzero — expected, ignored.
 pipx uninstall call-copilot >/dev/null 2>&1 || true
-pipx install "$SPEC"
+INSTALL_OK=1
+if ! pipx install "$SPEC"; then
+    INSTALL_OK=0
+    # Some setup (AV/backup software on Windows most commonly, but the
+    # lock can happen elsewhere too) can leave a half-deleted venv that
+    # makes the install above fail even though the uninstall reported
+    # success. Clean it by hand and retry once — same fix a human would do.
+    VENVS_DIR="$(pipx environment --value PIPX_LOCAL_VENVS 2>/dev/null || true)"
+    if [ -n "$VENVS_DIR" ]; then
+        echo "La instalación falló — puede haber quedado un venv viejo trabado. Lo limpio y reintento una vez..."
+        rm -rf "$VENVS_DIR/call-copilot"
+        if pipx install "$SPEC"; then
+            INSTALL_OK=1
+        fi
+    fi
+fi
+if [ "$INSTALL_OK" -ne 1 ]; then
+    echo "Error: no se pudo instalar call-copilot." >&2
+    exit 1
+fi
 
 mkdir -p "$APP_HOME"
 echo "$EXTRAS" > "$APP_HOME/install-profile"
