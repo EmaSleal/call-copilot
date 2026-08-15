@@ -29,6 +29,11 @@ dependencies = [
     # Linux uses PulseAudio via subprocess (src/audio/pulse_source.py), no
     # PyAudio dependency there.
     "PyAudioWPatch==0.2.12.7; sys_platform == 'win32'",
+    # BlackHole loopback capture — macOS only (src/audio/blackhole_source.py).
+    # Plain PyAudio suffices here: BlackHole shows up as a regular input
+    # device once installed (brew install blackhole-2ch), no loopback-specific
+    # API needed the way WASAPI requires PyAudioWPatch on Windows.
+    "PyAudio>=0.2.14; sys_platform == 'darwin'",
 ]
 
 [project.optional-dependencies]

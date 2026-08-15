@@ -86,11 +86,18 @@ Sin clonar el repo — instala como comando global vía [pipx](https://pipx.pypa
 (el script clona internamente):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/EmaSleal/call-copilot/linux-support/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/EmaSleal/call-copilot/main/install.sh | sh
+```
+
+En Windows (PowerShell):
+
+```powershell
+irm https://raw.githubusercontent.com/EmaSleal/call-copilot/main/install.ps1 | iex
 ```
 
 Pregunta qué perfil instalar y arma el comando `call-copilot`. Config y
-datos quedan en `~/.call-copilot/`, no en el directorio del repo.
+datos quedan en `~/.call-copilot/` (Linux/macOS) o `$HOME\.call-copilot\`
+(Windows), no en el directorio del repo.
 
 | Perfil | Incluye |
 |---|---|
@@ -102,7 +109,7 @@ También instalable directo con los extras de `pyproject.toml` (`whisper-local`,
 `video`, `rag`, o `full` para los tres):
 
 ```bash
-pipx install "call-copilot[whisper-local,video,rag] @ git+https://github.com/EmaSleal/call-copilot.git@linux-support"
+pipx install "call-copilot[whisper-local,video,rag] @ git+https://github.com/EmaSleal/call-copilot.git@main"
 ```
 
 ### Comandos

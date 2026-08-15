@@ -220,6 +220,10 @@ class CallCopilotTab(TabPane):
             from src.audio.wasapi_source import WASAPILoopbackSource
 
             _audio_source = WASAPILoopbackSource()
+        elif sys.platform == "darwin":
+            from src.audio.blackhole_source import BlackHoleLoopbackSource
+
+            _audio_source = BlackHoleLoopbackSource()
         else:
             from src.audio.pulse_source import PulseLoopbackSource
 

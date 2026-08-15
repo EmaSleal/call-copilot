@@ -3,7 +3,7 @@
 # `sh` on systems that don't have bash installed at all.
 #
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/EmaSleal/call-copilot/linux-support/install.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/EmaSleal/call-copilot/main/install.sh | sh
 #
 # Installs call-copilot as a global command via pipx (no manual git clone
 # needed — pipx clones the repo internally). Prompts once for which
@@ -14,7 +14,7 @@
 set -eu
 
 REPO_URL="https://github.com/EmaSleal/call-copilot.git"
-BRANCH="linux-support"
+BRANCH="main"
 APP_HOME="$HOME/.call-copilot"
 
 # `curl ... | sh` makes stdin the piped script source itself, not the
@@ -52,6 +52,28 @@ PY_MINOR="${PY_VERSION##*.}"
 if [ "$PY_MAJOR" -lt 3 ] || { [ "$PY_MAJOR" -eq 3 ] && [ "$PY_MINOR" -lt 10 ]; }; then
     echo "Error: se requiere Python >= 3.10 (encontrado $PY_VERSION)." >&2
     exit 1
+fi
+
+# ── macOS: BlackHole (driver de loopback de audio) ─────────────────────────
+# Call Copilot necesita capturar la salida de audio del sistema para
+# escuchar la llamada; en macOS eso se hace vía BlackHole, un driver de
+# audio virtual instalado como cask de Homebrew. No bloquea el resto de
+# la instalación si falla — el usuario puede instalarlo a mano después.
+if [ "$(uname -s)" = "Darwin" ]; then
+    if command -v brew >/dev/null 2>&1; then
+        if ! brew list --cask blackhole-2ch >/dev/null 2>&1; then
+            echo "Instalando BlackHole (driver de audio virtual para capturar el audio del sistema)..."
+            brew install blackhole-2ch || echo "⚠ No se pudo instalar BlackHole automáticamente. Corré 'brew install blackhole-2ch' a mano." >&2
+        fi
+    else
+        echo
+        echo "⚠ Call Copilot necesita BlackHole para capturar el audio del sistema"
+        echo "  en macOS, y no se encontró Homebrew. Instalá Homebrew primero:"
+        echo "    /bin/bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\""
+        echo "  y después corré:"
+        echo "    brew install blackhole-2ch"
+        echo
+    fi
 fi
 
 # ── pipx ─────────────────────────────────────────────────────────────────
