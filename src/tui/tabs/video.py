@@ -2,6 +2,7 @@
 
 import asyncio
 import shutil
+import sqlite3
 
 from textual.app import ComposeResult
 from textual.containers import Horizontal
@@ -17,6 +18,7 @@ from textual.widgets import (
 
 import src.db.database as db
 from src.core import config_defaults
+from src.processing.category_dedup import DedupVerdict, dedup_suggestions, sync_category_embedding
 from src.tui.messages import CategoriesChanged
 from src.tui.screens.session_modal import SessionModal
 
@@ -29,19 +31,48 @@ def _find_otro_category(categories: list):
     return next((c for c in categories if c.name.lower() in ("otro", "otros")), None)
 
 
-def _partition_new_suggestions(
-    suggestions: list[dict], existing_names: set[str]
-) -> tuple[list[dict], list[dict]]:
-    """Split suggestions into (new_ones, duplicates) by exact category name match.
+def _verdict_label(verdict: DedupVerdict) -> str:
+    """Option label for the suggestions `SelectionList`: a genuinely new
+    suggestion shows its name/description; a suggestion `dedup_suggestions()`
+    matched to an existing category is prefixed with "≈" and shows what it
+    already duplicates, with the cosine distance appended on the embeddings
+    path (spec: Duplicate shown with override).
 
-    Pure function — no side effects, easy to test without Textual. Needed
-    because create_category() raises on a UNIQUE name collision, and the LLM
-    suggester can re-suggest a category that was already added earlier.
+    Pure function — no side effects, easy to test without Textual.
     """
-    new_ones, duplicates = [], []
-    for s in suggestions:
-        (duplicates if s["name"] in existing_names else new_ones).append(s)
-    return new_ones, duplicates
+    s = verdict.suggestion
+    if verdict.match is None:
+        return f"{s['name']} — {s['description']}"
+    label = f"≈ {s['name']} — Ya existe: {verdict.match.name}"
+    if verdict.backend == "embeddings" and verdict.distance is not None:
+        label += f" (d={verdict.distance:.2f})"
+    return label
+
+
+async def _create_checked_suggestions(
+    selected_indices, verdicts: list[DedupVerdict]
+) -> tuple[list[str], list[str], list[str]]:
+    """Create every checked suggestion, regardless of its dedup verdict —
+    checking a suggestion labelled as a duplicate IS the force-create
+    override (spec: User overrides). `db.create_category` is UNIQUE-name
+    safe: an actual collision at write time is reported as skipped instead
+    of crashing the TUI (spec: Duplicates surfaced, never silently
+    dropped). Returns `(added, forced, skipped)` category names.
+    """
+    added, forced, skipped = [], [], []
+    for i in selected_indices:
+        if i >= len(verdicts):
+            continue
+        verdict = verdicts[i]
+        s = verdict.suggestion
+        try:
+            created = db.create_category(s["name"], s["description"])
+        except sqlite3.IntegrityError:
+            skipped.append(s["name"])
+            continue
+        (forced if verdict.match is not None else added).append(s["name"])
+        sync_category_embedding(created)
+    return added, forced, skipped
 
 
 async def _reclassify_otros(session_id: int) -> int:
@@ -81,6 +112,7 @@ class VideoTab(TabPane):
         super().__init__("🎬 Video", id="tab-video")
         self._selected_session_id: int | None = None
         self._suggestions: list[dict] = []
+        self._verdicts: list[DedupVerdict] = []
         self._sessions_cache: dict[int, tuple] = {}
 
     def compose(self) -> ComposeResult:
@@ -223,18 +255,22 @@ class VideoTab(TabPane):
 
             loop = asyncio.get_running_loop()
             texts = [s.text for s in segments]
-            suggestions = await loop.run_in_executor(
-                None, lambda: suggest_new_categories(texts, categories)
-            )
-            self._suggestions = suggestions
+
+            def _suggest_and_dedup():
+                suggestions = suggest_new_categories(texts, categories)
+                return dedup_suggestions(suggestions, categories)
+
+            verdicts = await loop.run_in_executor(None, _suggest_and_dedup)
+            self._verdicts = verdicts
+            self._suggestions = [v.suggestion for v in verdicts]
             sel.clear_options()
             btn_add.disabled = True
-            if suggestions:
-                for i, s in enumerate(suggestions):
-                    sel.add_option((f"{s['name']} — {s['description']}", i))
+            if verdicts:
+                for i, v in enumerate(verdicts):
+                    sel.add_option((_verdict_label(v), i))
                 btn_add.disabled = False
                 fb.update(
-                    f"[green]{len(suggestions)} sugerencia(s). Marcá las que querés agregar.[/green]"
+                    f"[green]{len(verdicts)} sugerencia(s). Marcá las que querés agregar.[/green]"
                 )
             else:
                 fb.update("[yellow]No se encontraron patrones recurrentes.[/yellow]")
@@ -251,32 +287,28 @@ class VideoTab(TabPane):
             )
             return
 
-        existing_names = {c.name for c in db.get_categories()}
-        selected = [
-            self._suggestions[i] for i in selected_indices if i < len(self._suggestions)
-        ]
-        new_ones, duplicates = _partition_new_suggestions(selected, existing_names)
-
-        for s in new_ones:
-            db.create_category(s["name"], s["description"])
+        added, forced, skipped = await _create_checked_suggestions(
+            selected_indices, self._verdicts
+        )
 
         remaining = [
-            s for i, s in enumerate(self._suggestions) if i not in set(selected_indices)
+            v for i, v in enumerate(self._verdicts) if i not in set(selected_indices)
         ]
-        self._suggestions = remaining
+        self._verdicts = remaining
+        self._suggestions = [v.suggestion for v in remaining]
         sel.clear_options()
-        for i, s in enumerate(remaining):
-            sel.add_option((f"{s['name']} — {s['description']}", i))
+        for i, v in enumerate(remaining):
+            sel.add_option((_verdict_label(v), i))
         if not remaining:
             self.query_one("#btn-add-suggestion", Button).disabled = True
 
         parts = []
-        if new_ones:
-            parts.append(f"Agregadas: {', '.join(s['name'] for s in new_ones)}.")
-        if duplicates:
-            parts.append(
-                f"Ya existían (omitidas): {', '.join(s['name'] for s in duplicates)}."
-            )
+        if added:
+            parts.append(f"Agregadas: {', '.join(added)}.")
+        if forced:
+            parts.append(f"Forzadas pese a duplicado: {', '.join(forced)}.")
+        if skipped:
+            parts.append(f"Omitidas (nombre ya existe): {', '.join(skipped)}.")
         self.post_message(CategoriesChanged())
 
         session_id = self._selected_session_id

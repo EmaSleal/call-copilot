@@ -37,34 +37,150 @@ class TestFindOtroCategory:
         assert _find_otro_category([]) is None
 
 
-class TestPartitionNewSuggestions:
-    def test_all_new_when_no_overlap(self):
-        from src.tui.tabs.video import _partition_new_suggestions
-        suggestions = [{"name": "A", "description": "d1"}, {"name": "B", "description": "d2"}]
-        new_ones, duplicates = _partition_new_suggestions(suggestions, existing_names=set())
-        assert new_ones == suggestions
-        assert duplicates == []
+class TestVerdictLabel:
+    """Duplicate-suggestion labelling for the SelectionList (spec: Duplicate
+    shown with override)."""
 
-    def test_all_duplicate_when_names_exist(self):
-        from src.tui.tabs.video import _partition_new_suggestions
-        suggestions = [{"name": "A", "description": "d1"}]
-        new_ones, duplicates = _partition_new_suggestions(suggestions, existing_names={"A"})
-        assert new_ones == []
-        assert duplicates == suggestions
+    def test_new_suggestion_label_is_plain_name_and_description(self):
+        from src.processing.category_dedup import DedupVerdict
+        from src.tui.tabs.video import _verdict_label
 
-    def test_mixed_partition(self):
-        from src.tui.tabs.video import _partition_new_suggestions
-        a = {"name": "A", "description": "d1"}
-        b = {"name": "B", "description": "d2"}
-        new_ones, duplicates = _partition_new_suggestions([a, b], existing_names={"B"})
-        assert new_ones == [a]
-        assert duplicates == [b]
+        verdict = DedupVerdict(
+            suggestion={"name": "Marketing", "description": "Campañas"},
+            match=None, distance=None, backend="none",
+        )
 
-    def test_empty_suggestions_returns_empty(self):
-        from src.tui.tabs.video import _partition_new_suggestions
-        new_ones, duplicates = _partition_new_suggestions([], existing_names={"A"})
-        assert new_ones == []
-        assert duplicates == []
+        assert _verdict_label(verdict) == "Marketing — Campañas"
+
+    def test_duplicate_label_shows_the_matched_category(self):
+        from src.db.database import Category
+        from src.processing.category_dedup import DedupVerdict
+        from src.tui.tabs.video import _verdict_label
+
+        match = Category(id=9, name="Jerarquía visual", description="", color="#000")
+        verdict = DedupVerdict(
+            suggestion={"name": "Jerarquías", "description": "d"},
+            match=match, distance=None, backend="llm-judge",
+        )
+
+        assert _verdict_label(verdict) == "≈ Jerarquías — Ya existe: Jerarquía visual"
+
+    def test_embeddings_duplicate_label_includes_distance(self):
+        from src.db.database import Category
+        from src.processing.category_dedup import DedupVerdict
+        from src.tui.tabs.video import _verdict_label
+
+        match = Category(id=9, name="Jerarquía visual", description="", color="#000")
+        verdict = DedupVerdict(
+            suggestion={"name": "Jerarquías", "description": "d"},
+            match=match, distance=0.123, backend="embeddings",
+        )
+
+        assert _verdict_label(verdict) == "≈ Jerarquías — Ya existe: Jerarquía visual (d=0.12)"
+
+    def test_llm_judge_duplicate_label_has_no_distance_suffix(self):
+        from src.db.database import Category
+        from src.processing.category_dedup import DedupVerdict
+        from src.tui.tabs.video import _verdict_label
+
+        match = Category(id=9, name="Jerarquía visual", description="", color="#000")
+        verdict = DedupVerdict(
+            suggestion={"name": "Jerarquías", "description": "d"},
+            match=match, distance=None, backend="llm-judge",
+        )
+
+        assert "(d=" not in _verdict_label(verdict)
+
+
+class TestCreateCheckedSuggestions:
+    """`_create_checked_suggestions` creates every checked verdict regardless
+    of its match (spec: User overrides), skipping only an actual UNIQUE-name
+    collision at write time (spec: Fail-open / never silently dropped)."""
+
+    def test_new_suggestion_is_added(self):
+        from src.db.database import Category
+        from src.processing.category_dedup import DedupVerdict
+        from src.tui.tabs.video import _create_checked_suggestions
+
+        verdict = DedupVerdict(
+            suggestion={"name": "Marketing", "description": "d"},
+            match=None, distance=None, backend="none",
+        )
+        created = Category(id=1, name="Marketing", description="d", color="#6366f1")
+
+        with (
+            patch("src.tui.tabs.video.db.create_category", return_value=created) as mock_create,
+            patch("src.tui.tabs.video.sync_category_embedding") as mock_sync,
+        ):
+            added, forced, skipped = asyncio.run(
+                _create_checked_suggestions([0], [verdict])
+            )
+
+        assert added == ["Marketing"]
+        assert forced == []
+        assert skipped == []
+        mock_create.assert_called_once_with("Marketing", "d")
+        mock_sync.assert_called_once_with(created)
+
+    def test_checked_duplicate_is_force_created(self):
+        from src.db.database import Category
+        from src.processing.category_dedup import DedupVerdict
+        from src.tui.tabs.video import _create_checked_suggestions
+
+        match = Category(id=9, name="Jerarquía visual", description="", color="#000")
+        verdict = DedupVerdict(
+            suggestion={"name": "Jerarquías", "description": "d"},
+            match=match, distance=0.1, backend="embeddings",
+        )
+        created = Category(id=2, name="Jerarquías", description="d", color="#6366f1")
+
+        with (
+            patch("src.tui.tabs.video.db.create_category", return_value=created),
+            patch("src.tui.tabs.video.sync_category_embedding"),
+        ):
+            added, forced, skipped = asyncio.run(
+                _create_checked_suggestions([0], [verdict])
+            )
+
+        assert added == []
+        assert forced == ["Jerarquías"]
+        assert skipped == []
+
+    def test_integrity_error_is_skipped_not_raised(self):
+        import sqlite3
+
+        from src.processing.category_dedup import DedupVerdict
+        from src.tui.tabs.video import _create_checked_suggestions
+
+        verdict = DedupVerdict(
+            suggestion={"name": "Marketing", "description": "d"},
+            match=None, distance=None, backend="none",
+        )
+
+        with (
+            patch(
+                "src.tui.tabs.video.db.create_category",
+                side_effect=sqlite3.IntegrityError("UNIQUE constraint failed"),
+            ),
+            patch("src.tui.tabs.video.sync_category_embedding") as mock_sync,
+        ):
+            added, forced, skipped = asyncio.run(
+                _create_checked_suggestions([0], [verdict])
+            )
+
+        assert added == []
+        assert forced == []
+        assert skipped == ["Marketing"]
+        mock_sync.assert_not_called()
+
+    def test_empty_selection_returns_empty_lists(self):
+        from src.tui.tabs.video import _create_checked_suggestions
+
+        added, forced, skipped = asyncio.run(_create_checked_suggestions([], []))
+
+        assert added == []
+        assert forced == []
+        assert skipped == []
 
 
 class TestReclassifyOtros:
