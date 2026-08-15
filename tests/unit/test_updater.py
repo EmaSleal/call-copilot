@@ -39,7 +39,7 @@ class TestBuildPipSpec:
 
     def test_spec_points_at_the_git_repo(self):
         spec = build_pip_spec("")
-        assert spec.endswith("git+https://github.com/EmaSleal/call-copilot.git@linux-support")
+        assert spec.endswith("git+https://github.com/EmaSleal/call-copilot.git@main")
 
 
 class TestReadInstallProfile:

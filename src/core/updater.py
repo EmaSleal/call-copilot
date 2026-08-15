@@ -10,7 +10,7 @@ import subprocess
 from src.core.paths import _is_dev_checkout, _REPO_ROOT, app_home
 
 _REPO_URL = "https://github.com/EmaSleal/call-copilot.git"
-_BRANCH = "linux-support"
+_BRANCH = "main"
 _GIT_SPEC = f"git+{_REPO_URL}@{_BRANCH}"
 
 
