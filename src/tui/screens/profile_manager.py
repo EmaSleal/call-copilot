@@ -45,7 +45,7 @@ class ProfileManagerScreen(ModalScreen):
     CSS = """
     ProfileManagerScreen { align: center middle; }
     #pm-dialog {
-        width: 90; height: 42;
+        width: 90; height: auto; max-height: 90%;
         background: #1e293b; border: solid #4f46e5;
         padding: 1 2;
     }

@@ -16,7 +16,7 @@ import os
 import sqlite3
 
 from textual.app import ComposeResult
-from textual.containers import Horizontal, Vertical
+from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.screen import ModalScreen
 from textual.widgets import Button, Input, Label, Select
 
@@ -110,7 +110,7 @@ class SettingsScreen(ModalScreen):
     CSS = """
     SettingsScreen { align: center middle; }
     #settings-dialog {
-        width: 90; height: 44;
+        width: 90; height: auto; max-height: 90%;
         background: #1e293b; border: solid #4f46e5;
         padding: 1 2;
     }
@@ -138,7 +138,7 @@ class SettingsScreen(ModalScreen):
             with Horizontal(id="settings-header"):
                 yield Label("Configuración", id="settings-title")
                 yield Button("✕ Cerrar", id="btn-settings-close", variant="default")
-            with Vertical(id="settings-body"):
+            with VerticalScroll(id="settings-body"):
                 yield Label(
                     "Proveedor LLM (tiempo real) — aplica en la próxima llamada:"
                 )

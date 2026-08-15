@@ -6,7 +6,7 @@ import os
 from datetime import datetime
 
 from textual.app import ComposeResult
-from textual.containers import Horizontal
+from textual.containers import Horizontal, VerticalScroll
 from textual.widgets import Button, Input, Label, RichLog, Select, Static, TabPane
 
 from src.tui import bootstrap
@@ -20,17 +20,24 @@ from src.tui.screens.settings import SettingsScreen
 def build_audio_sink_options() -> list[tuple[str, str]]:
     """
     Build (label, value) pairs for CallCopilotTab's "Salida de audio a
-    capturar" Select. Value "" means "system default sink" (the pre-existing
-    behavior); a non-empty value is a bare sink name, passed as
-    PulseLoopbackSource(device=...) — that class appends ".monitor" itself.
+    capturar" Select. Value "" means "system default device" (the
+    pre-existing behavior). A non-empty value identifies a specific
+    device to capture: on Linux, a bare Pulse/PipeWire sink name, passed
+    to PulseLoopbackSource(device=...) (which appends ".monitor" itself);
+    on Windows, a WASAPI device index (as str), passed to
+    WASAPILoopbackSource(device_index=int(value)).
 
-    Only meaningful on Linux; on other platforms or when pactl is
-    unavailable, list_sinks() returns [] and only the default option shows.
+    Only one of the two listing calls below ever returns anything —
+    list_sinks() needs pactl (Linux), list_output_devices() needs
+    pyaudiowpatch (Windows); each is a no-op on the other platform, so
+    it's safe to just concatenate both.
     """
     from src.audio.pulse_source import list_sinks, sink_label
+    from src.audio.wasapi_source import device_label, list_output_devices
 
-    options = [("Default (sink del sistema)", "")]
+    options = [("Default (dispositivo del sistema)", "")]
     options.extend((sink_label(s), s.name) for s in list_sinks())
+    options.extend((device_label(d), str(d.index)) for d in list_output_devices())
     return options
 
 
@@ -51,48 +58,54 @@ class CallCopilotTab(TabPane):
         self._profile_store = ProfileStore()
         # Active profile is snapshotted at call start (no live reload during an active call).
         self._active_profile: CallProfile = self._profile_store.get_active()
-        # "" means system default sink (PulseLoopbackSource(device=None)) — see build_audio_sink_options.
+        # "" means system default device (PulseLoopbackSource(device=None) /
+        # WASAPILoopbackSource(device_index=None)) — see build_audio_sink_options.
         self._audio_device: str = ""
 
     def compose(self) -> ComposeResult:
-        yield Label("Título de la sesión (opcional):")
-        yield Input(placeholder="Título de la sesión (opcional)", id="session_title")
-        yield Label("Contexto de la llamada (opcional):")
-        yield Input(
-            placeholder="Ej: reunión de ventas con cliente enterprise",
-            id="call-context",
-        )
-        yield Label("Perfil activo:")
-        profile_options = [(p.name, p.id) for p in self._profile_store.list()]
-        yield Select(
-            options=profile_options,
-            value=self._active_profile.id,
-            id="profile-select",
-        )
-        yield Label(
-            "Salida de audio a capturar (Linux — qué sale por la corneta/auriculares):"
-        )
-        with Horizontal(id="audio-sink-row"):
+        # This tab's content (2x RichLog + several Selects/Inputs) easily
+        # exceeds a small terminal's height. TabPane doesn't scroll on its
+        # own, so without this wrapper the layout overflows into visually
+        # overlapping widgets instead of just scrolling.
+        with VerticalScroll():
+            yield Label("Título de la sesión (opcional):")
+            yield Input(placeholder="Título de la sesión (opcional)", id="session_title")
+            yield Label("Contexto de la llamada (opcional):")
+            yield Input(
+                placeholder="Ej: reunión de ventas con cliente enterprise",
+                id="call-context",
+            )
+            yield Label("Perfil activo:")
+            profile_options = [(p.name, p.id) for p in self._profile_store.list()]
             yield Select(
-                options=build_audio_sink_options(),
-                value="",
-                id="audio-sink-select",
+                options=profile_options,
+                value=self._active_profile.id,
+                id="profile-select",
             )
-            yield Button("↻", id="btn-refresh-sinks", variant="default")
-        with Horizontal(id="call-buttons"):
-            yield Button("▶ Iniciar", id="btn-start-call", variant="success")
-            yield Button(
-                "⏹ Detener", id="btn-stop-call", variant="error", disabled=True
+            yield Label(
+                "Salida de audio a capturar (qué sale por la corneta/auriculares):"
             )
-            yield Button(
-                "Gestionar perfiles", id="btn-manage-profiles", variant="default"
-            )
-            yield Button("⚙ Configuración", id="btn-settings", variant="default")
-        yield Label("Transcripción en vivo:", id="lbl-transcript")
-        yield RichLog(id="transcript-log", highlight=True, markup=True, wrap=True)
-        yield Label("Sugerencia del copiloto:", id="lbl-suggestion")
-        yield Static("", id="suggestion-live")
-        yield RichLog(id="suggestion-log", highlight=True, markup=True, wrap=True)
+            with Horizontal(id="audio-sink-row"):
+                yield Select(
+                    options=build_audio_sink_options(),
+                    value="",
+                    id="audio-sink-select",
+                )
+                yield Button("↻", id="btn-refresh-sinks", variant="default")
+            with Horizontal(id="call-buttons"):
+                yield Button("▶ Iniciar", id="btn-start-call", variant="success")
+                yield Button(
+                    "⏹ Detener", id="btn-stop-call", variant="error", disabled=True
+                )
+                yield Button(
+                    "Gestionar perfiles", id="btn-manage-profiles", variant="default"
+                )
+                yield Button("⚙ Configuración", id="btn-settings", variant="default")
+            yield Label("Transcripción en vivo:", id="lbl-transcript")
+            yield RichLog(id="transcript-log", highlight=True, markup=True, wrap=True)
+            yield Label("Sugerencia del copiloto:", id="lbl-suggestion")
+            yield Static("", id="suggestion-live")
+            yield RichLog(id="suggestion-log", highlight=True, markup=True, wrap=True)
 
     def on_select_changed(self, event: Select.Changed) -> None:
         """Update active profile / audio sink when the user picks a different option."""
@@ -219,7 +232,8 @@ class CallCopilotTab(TabPane):
         if sys.platform == "win32":
             from src.audio.wasapi_source import WASAPILoopbackSource
 
-            _audio_source = WASAPILoopbackSource()
+            device_index = int(self._audio_device) if self._audio_device else None
+            _audio_source = WASAPILoopbackSource(device_index=device_index)
         elif sys.platform == "darwin":
             from src.audio.blackhole_source import BlackHoleLoopbackSource
 
