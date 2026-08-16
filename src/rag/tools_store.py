@@ -34,6 +34,14 @@ class ToolsCatalogStore(ChromaEmbeddingStore):
         )
         return True
 
+    async def delete_tool(self, tool_id: int) -> bool:
+        """Remove a tool's embedding, keyed by str(tool_id). Returns False
+        (no-op) without chromadb — never raises."""
+        if self._collection is None:
+            return False
+        self._collection.delete(ids=[str(tool_id)])
+        return True
+
     async def search(self, query: str, top_k: int = 5) -> list[tuple[int, float]]:
         if not query.strip() or not self._openai or self._collection is None:
             return []

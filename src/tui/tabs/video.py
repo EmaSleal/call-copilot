@@ -185,9 +185,12 @@ class VideoTab(TabPane):
         if action == "analyze":
             asyncio.create_task(self._analyze_others(sid))
         elif action == "delete":
+            from src.processing.search_indexer import forget_segment_embeddings
             from src.video.pipeline import OUTPUT_DIR
 
+            segment_ids = [s.id for s in db.get_segments(sid)]
             db.delete_video_session(sid)
+            forget_segment_embeddings("video", segment_ids)
             session_dir = OUTPUT_DIR / str(sid)
             if session_dir.exists():
                 shutil.rmtree(session_dir, ignore_errors=True)

@@ -83,6 +83,40 @@ class TestAddSegment:
         mock_collection.upsert.assert_not_called()
 
 
+class TestDeleteSegment:
+    @pytest.mark.asyncio
+    async def test_deletes_by_composite_id(self, mock_chromadb, mock_collection, mock_openai_client):
+        from src.rag.segments_store import SegmentsSearchStore
+
+        store = SegmentsSearchStore(openai_client=mock_openai_client)
+        result = await store.delete_segment("video", 42)
+
+        assert result is True
+        mock_collection.delete.assert_called_once_with(ids=["video:42"])
+
+    @pytest.mark.asyncio
+    async def test_call_source_composite_id(self, mock_chromadb, mock_collection, mock_openai_client):
+        from src.rag.segments_store import SegmentsSearchStore
+
+        store = SegmentsSearchStore(openai_client=mock_openai_client)
+        await store.delete_segment("call", 7)
+
+        mock_collection.delete.assert_called_once_with(ids=["call:7"])
+
+    @pytest.mark.asyncio
+    async def test_without_collection_returns_false_and_does_not_raise(
+        self, monkeypatch, mock_openai_client
+    ):
+        from src.rag.segments_store import SegmentsSearchStore
+
+        monkeypatch.setitem(sys.modules, "chromadb", None)
+        store = SegmentsSearchStore(openai_client=mock_openai_client)
+
+        result = await store.delete_segment("video", 1)
+
+        assert result is False
+
+
 class TestSearch:
     @pytest.mark.asyncio
     async def test_parses_source_and_id_from_composite_results(

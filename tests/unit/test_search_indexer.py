@@ -55,6 +55,47 @@ class TestIndexSegment:
         assert result is False
 
 
+class TestForgetSegmentEmbeddings:
+    def test_deletes_each_segment_id_via_store(self, with_openai_key):
+        from src.processing import search_indexer
+
+        mock_store = MagicMock()
+        mock_store.delete_segment = AsyncMock(return_value=True)
+        mock_store_cls = MagicMock(return_value=mock_store)
+
+        with patch.object(search_indexer, "SegmentsSearchStore", mock_store_cls):
+            search_indexer.forget_segment_embeddings("video", [1, 2, 3])
+
+        assert mock_store.delete_segment.await_count == 3
+        mock_store.delete_segment.assert_any_await("video", 1)
+        mock_store.delete_segment.assert_any_await("video", 2)
+        mock_store.delete_segment.assert_any_await("video", 3)
+
+    def test_empty_ids_is_a_noop(self, with_openai_key):
+        from src.processing import search_indexer
+
+        mock_store = MagicMock()
+        mock_store.delete_segment = AsyncMock(return_value=True)
+        mock_store_cls = MagicMock(return_value=mock_store)
+
+        with patch.object(search_indexer, "SegmentsSearchStore", mock_store_cls):
+            search_indexer.forget_segment_embeddings("video", [])
+
+        mock_store.delete_segment.assert_not_awaited()
+
+    def test_store_failure_does_not_raise(self, with_openai_key):
+        """Best-effort — a Chroma failure never blocks the SQLite delete
+        that already happened in the caller."""
+        from src.processing import search_indexer
+
+        mock_store = MagicMock()
+        mock_store.delete_segment = AsyncMock(side_effect=RuntimeError("boom"))
+        mock_store_cls = MagicMock(return_value=mock_store)
+
+        with patch.object(search_indexer, "SegmentsSearchStore", mock_store_cls):
+            search_indexer.forget_segment_embeddings("video", [1])  # must not raise
+
+
 class TestSearchSegmentsSemantic:
     @pytest.mark.asyncio
     async def test_joins_video_and_call_results_back_to_sql_rows(self, patched_db, with_openai_key):

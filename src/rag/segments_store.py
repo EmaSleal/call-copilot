@@ -41,6 +41,14 @@ class SegmentsSearchStore(ChromaEmbeddingStore):
         )
         return True
 
+    async def delete_segment(self, source: str, segment_id: int) -> bool:
+        """Remove a segment's embedding, keyed by "<source>:<id>". Returns
+        False (no-op) without chromadb — never raises."""
+        if self._collection is None:
+            return False
+        self._collection.delete(ids=[f"{source}:{segment_id}"])
+        return True
+
     async def search(self, query: str, top_k: int = 5) -> list[tuple[str, int, float]]:
         """Returns (source, segment_id, distance) tuples ranked by
         similarity."""
