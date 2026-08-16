@@ -29,6 +29,7 @@ class Category:
     description: str
     color: str = "#6366f1"  # indigo por defecto
     parent_id: Optional[int] = None  # subcategoría de otra si no es None (un solo nivel)
+    deleted_at: Optional[str] = None
 
 
 @dataclass
@@ -40,6 +41,7 @@ class VideoSession:
     created_at: str = field(default_factory=lambda: datetime.now().isoformat())
     html_report: Optional[str] = None
     error_msg: Optional[str] = None
+    deleted_at: Optional[str] = None
 
 
 @dataclass
@@ -51,6 +53,7 @@ class Segment:
     text: str
     category_id: Optional[int] = None
     keyframe_path: Optional[str] = None
+    deleted_at: Optional[str] = None
 
 
 @dataclass
@@ -62,6 +65,7 @@ class CallSession:
     chroma_collection: Optional[str] = None
     profile_id: Optional[str] = None
     title: str = ""
+    deleted_at: Optional[str] = None
 
 
 @dataclass
@@ -71,6 +75,7 @@ class CallSegment:
     sort_order: int
     text: str
     category_id: Optional[int] = None
+    deleted_at: Optional[str] = None
 
 
 @dataclass
@@ -83,6 +88,7 @@ class Tool:
     summary: str = ""
     tags: str = ""  # JSON-encoded list
     created_at: str = field(default_factory=lambda: datetime.now().isoformat())
+    deleted_at: Optional[str] = None
 
 
 @dataclass
@@ -92,6 +98,7 @@ class ToolMention:
     call_session_id: int
     context_snippet: str = ""
     created_at: str = field(default_factory=lambda: datetime.now().isoformat())
+    deleted_at: Optional[str] = None
 
 
 @dataclass
@@ -184,19 +191,15 @@ def init_db() -> None:
             created_at       TEXT NOT NULL
         );
 
-        CREATE VIEW IF NOT EXISTS unified_segments AS
-            SELECT id, 'video' AS source, session_id, text, category_id,
-                   start_s AS position
-            FROM segments
-            UNION ALL
-            SELECT id, 'call' AS source, call_session_id AS session_id, text, category_id,
-                   CAST(sort_order AS REAL) AS position
-            FROM call_segments;
-
-        CREATE VIEW IF NOT EXISTS unified_sessions AS
-            SELECT id, 'video' AS source, title, created_at FROM video_sessions
-            UNION ALL
-            SELECT id, 'call' AS source, title, created_at FROM call_sessions;
+        CREATE TABLE IF NOT EXISTS audit_log (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            actor       TEXT NOT NULL,
+            action      TEXT NOT NULL,
+            table_name  TEXT NOT NULL,
+            row_id      INTEGER NOT NULL,
+            details     TEXT,
+            created_at  TEXT NOT NULL
+        );
         """)
         _seed_categories(conn)
         _migrate(conn)
@@ -221,6 +224,54 @@ def _migrate(conn: sqlite3.Connection) -> None:
     cat_cols = {r[1] for r in conn.execute("PRAGMA table_info(categories)").fetchall()}
     if "parent_id" not in cat_cols:
         conn.execute("ALTER TABLE categories ADD COLUMN parent_id INTEGER REFERENCES categories(id)")
+
+    for table in (
+        "categories", "video_sessions", "segments",
+        "call_sessions", "call_segments", "tools", "tool_mentions",
+    ):
+        cols = {r[1] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+        if "deleted_at" not in cols:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN deleted_at TEXT")
+
+    _recreate_views(conn)
+
+
+def _recreate_views(conn: sqlite3.Connection) -> None:
+    """Views can't be ALTERed, so they're dropped and redefined on every
+    init_db() call — cheap, and keeps a single source of truth here instead
+    of drifting from the CREATE VIEW IF NOT EXISTS a prior install ran with."""
+    conn.execute("DROP VIEW IF EXISTS unified_segments")
+    conn.execute("""
+        CREATE VIEW unified_segments AS
+            SELECT id, 'video' AS source, session_id, text, category_id,
+                   start_s AS position
+            FROM segments
+            WHERE deleted_at IS NULL
+            UNION ALL
+            SELECT id, 'call' AS source, call_session_id AS session_id, text, category_id,
+                   CAST(sort_order AS REAL) AS position
+            FROM call_segments
+            WHERE deleted_at IS NULL
+    """)
+
+    conn.execute("DROP VIEW IF EXISTS unified_sessions")
+    conn.execute("""
+        CREATE VIEW unified_sessions AS
+            SELECT id, 'video' AS source, title, created_at FROM video_sessions
+            WHERE deleted_at IS NULL
+            UNION ALL
+            SELECT id, 'call' AS source, title, created_at FROM call_sessions
+            WHERE deleted_at IS NULL
+    """)
+
+
+def _write_audit_log(
+    conn: sqlite3.Connection, actor: str, action: str, table_name: str, row_id: int, details: str = ""
+) -> None:
+    conn.execute(
+        "INSERT INTO audit_log (actor, action, table_name, row_id, details, created_at) VALUES (?,?,?,?,?,?)",
+        (actor, action, table_name, row_id, details, datetime.now().isoformat()),
+    )
 
 
 def _seed_categories(conn: sqlite3.Connection) -> None:
@@ -267,7 +318,9 @@ def _conn():
 
 def get_categories() -> list[Category]:
     with _conn() as conn:
-        rows = conn.execute("SELECT * FROM categories ORDER BY name").fetchall()
+        rows = conn.execute(
+            "SELECT * FROM categories WHERE deleted_at IS NULL ORDER BY name"
+        ).fetchall()
     return [Category(**dict(r)) for r in rows]
 
 
@@ -286,14 +339,14 @@ def _assert_valid_parent(conn: sqlite3.Connection, cat_id: Optional[int], parent
         raise ValueError("A category cannot be its own parent.")
 
     parent_row = conn.execute(
-        "SELECT parent_id FROM categories WHERE id=?", (parent_id,)
+        "SELECT parent_id FROM categories WHERE id=? AND deleted_at IS NULL", (parent_id,)
     ).fetchone()
     if parent_row is not None and parent_row["parent_id"] is not None:
         raise ValueError("Cannot nest a subcategory under another subcategory (single-level only).")
 
     if cat_id is not None:
         has_children = conn.execute(
-            "SELECT 1 FROM categories WHERE parent_id=? LIMIT 1", (cat_id,)
+            "SELECT 1 FROM categories WHERE parent_id=? AND deleted_at IS NULL LIMIT 1", (cat_id,)
         ).fetchone()
         if has_children is not None:
             raise ValueError("Cannot assign a parent to a category that already has children.")
@@ -325,14 +378,18 @@ def update_category(
         )
 
 
-def delete_category(cat_id: int) -> None:
+def delete_category(cat_id: int, actor: str = "human") -> None:
     with _conn() as conn:
         # Desasignar segmentos/fragmentos que usaban esta categoría antes de borrar
         conn.execute("UPDATE segments SET category_id=NULL WHERE category_id=?", (cat_id,))
         conn.execute("UPDATE call_segments SET category_id=NULL WHERE category_id=?", (cat_id,))
         # Promover hijos a nivel superior en vez de cascadear el borrado (D2)
         conn.execute("UPDATE categories SET parent_id=NULL WHERE parent_id=?", (cat_id,))
-        conn.execute("DELETE FROM categories WHERE id=?", (cat_id,))
+        conn.execute(
+            "UPDATE categories SET deleted_at=? WHERE id=?",
+            (datetime.now().isoformat(), cat_id),
+        )
+        _write_audit_log(conn, actor, "delete_category", "categories", cat_id)
 
 
 # ─────────────────────────────────────────────────────────────
@@ -350,10 +407,12 @@ def create_video_session(title: str, url: str) -> VideoSession:
     return s
 
 
-def delete_video_session(session_id: int) -> None:
+def delete_video_session(session_id: int, actor: str = "human") -> None:
     with _conn() as conn:
-        conn.execute("DELETE FROM segments WHERE session_id=?", (session_id,))
-        conn.execute("DELETE FROM video_sessions WHERE id=?", (session_id,))
+        now = datetime.now().isoformat()
+        conn.execute("UPDATE segments SET deleted_at=? WHERE session_id=?", (now, session_id))
+        conn.execute("UPDATE video_sessions SET deleted_at=? WHERE id=?", (now, session_id))
+        _write_audit_log(conn, actor, "delete_video_session", "video_sessions", session_id)
 
 
 def update_session_status(session_id: int, status: str,
@@ -369,12 +428,12 @@ def get_video_sessions(status_filter: str = None) -> list[VideoSession]:
     with _conn() as conn:
         if status_filter:
             rows = conn.execute(
-                "SELECT * FROM video_sessions WHERE status=? ORDER BY created_at DESC",
+                "SELECT * FROM video_sessions WHERE status=? AND deleted_at IS NULL ORDER BY created_at DESC",
                 (status_filter,)
             ).fetchall()
         else:
             rows = conn.execute(
-                "SELECT * FROM video_sessions ORDER BY created_at DESC"
+                "SELECT * FROM video_sessions WHERE deleted_at IS NULL ORDER BY created_at DESC"
             ).fetchall()
     return [VideoSession(**dict(r)) for r in rows]
 
@@ -399,7 +458,7 @@ def save_segment(seg: Segment) -> Segment:
 def get_segments(session_id: int) -> list[Segment]:
     with _conn() as conn:
         rows = conn.execute(
-            "SELECT * FROM segments WHERE session_id=? ORDER BY start_s",
+            "SELECT * FROM segments WHERE session_id=? AND deleted_at IS NULL ORDER BY start_s",
             (session_id,)
         ).fetchall()
     return [Segment(**dict(r)) for r in rows]
@@ -417,7 +476,7 @@ def update_segment_category(segment_id: int, category_id: int) -> None:
 def get_segments_by_category(session_id: int, category_id: Optional[int]) -> list[Segment]:
     with _conn() as conn:
         rows = conn.execute(
-            "SELECT * FROM segments WHERE session_id=? AND category_id IS ? ORDER BY start_s",
+            "SELECT * FROM segments WHERE session_id=? AND category_id IS ? AND deleted_at IS NULL ORDER BY start_s",
             (session_id, category_id)
         ).fetchall()
     return [Segment(**dict(r)) for r in rows]
@@ -428,7 +487,7 @@ def get_segments_by_category_global(category_id: int) -> list[Segment]:
     scoped to one session) — used by Historial's global reclassify tool."""
     with _conn() as conn:
         rows = conn.execute(
-            "SELECT * FROM segments WHERE category_id=?", (category_id,)
+            "SELECT * FROM segments WHERE category_id=? AND deleted_at IS NULL", (category_id,)
         ).fetchall()
     return [Segment(**dict(r)) for r in rows]
 
@@ -440,7 +499,7 @@ def get_segments_by_ids(ids: list[int]) -> list[Segment]:
     placeholders = ",".join("?" for _ in ids)
     with _conn() as conn:
         rows = conn.execute(
-            f"SELECT * FROM segments WHERE id IN ({placeholders})", ids
+            f"SELECT * FROM segments WHERE id IN ({placeholders}) AND deleted_at IS NULL", ids
         ).fetchall()
     by_id = {r["id"]: Segment(**dict(r)) for r in rows}
     return [by_id[i] for i in ids if i in by_id]
@@ -455,7 +514,7 @@ def search_segments(query: str, category_id: int = None) -> list[dict]:
             FROM segments s
             LEFT JOIN categories c ON s.category_id = c.id
             LEFT JOIN video_sessions vs ON s.session_id = vs.id
-            WHERE s.text LIKE ?
+            WHERE s.text LIKE ? AND s.deleted_at IS NULL
         """
         params: list = [f"%{query}%"]
         if category_id:
