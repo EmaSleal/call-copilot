@@ -4,38 +4,27 @@ segments AND call segments, keyed by a composite "<source>:<id>" id.
 segments.id and call_segments.id are independent sequences that can
 collide, same reason unified_segments/Historial already uses composite
 "video:N"/"call:N" row keys.
-
-chromadb is imported lazily so the app can start (and segments can be
-saved) even when it isn't installed — matches the other soft-dependency
-guards in this codebase (OpenAI-optional embedding).
 """
 
 import logging
 
 from openai import AsyncOpenAI
 
-from src.core.paths import app_home
+from src.rag.base import ChromaEmbeddingStore
 
 logger = logging.getLogger("call_copilot.rag.segments_store")
 
 
-class SegmentsSearchStore:
-    EMBED_MODEL = "text-embedding-3-small"
+class SegmentsSearchStore(ChromaEmbeddingStore):
     COLLECTION = "segments_search"
 
     def __init__(self, openai_client: AsyncOpenAI | None, persist_dir: str | None = None):
-        persist_dir = persist_dir or str(app_home() / "data" / "chroma")
-        self._openai = openai_client
-        self._collection = None
-        try:
-            import chromadb
-        except ImportError:
-            logger.warning("chromadb no está instalado — búsqueda semántica deshabilitada.")
-            return
-        client = chromadb.PersistentClient(path=persist_dir)
-        self._collection = client.get_or_create_collection(
-            name=self.COLLECTION,
-            metadata={"hnsw:space": "cosine"},
+        super().__init__(
+            openai_client,
+            collection_name=self.COLLECTION,
+            logger=logger,
+            disabled_log_msg="chromadb no está instalado — búsqueda semántica deshabilitada.",
+            persist_dir=persist_dir,
         )
 
     async def add_segment(self, source: str, segment_id: int, text: str) -> bool:
@@ -73,10 +62,3 @@ class SegmentsSearchStore:
             if raw_id.isdigit():
                 parsed.append((source, int(raw_id), distance))
         return parsed
-
-    async def _embed(self, text: str) -> list[float]:
-        response = await self._openai.embeddings.create(
-            input=text,
-            model=self.EMBED_MODEL,
-        )
-        return response.data[0].embedding

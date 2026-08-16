@@ -2,35 +2,23 @@ import logging
 
 from openai import AsyncOpenAI
 
-from src.core.paths import app_home
+from src.rag.base import ChromaEmbeddingStore
 
 logger = logging.getLogger("call_copilot.rag.categories_store")
 
 
-class CategoriesStore:
-    """Chroma-backed semantic store for category dedup, keyed by SQLite category id.
+class CategoriesStore(ChromaEmbeddingStore):
+    """Chroma-backed semantic store for category dedup, keyed by SQLite category id."""
 
-    Mirrors src.rag.tools_store.ToolsCatalogStore exactly: chromadb is imported
-    lazily so the app can start (and category creation can run) even when it
-    isn't installed — matches the other soft-dependency guards in this
-    codebase (OpenAI-optional embedding)."""
-
-    EMBED_MODEL = "text-embedding-3-small"
     COLLECTION = "categories"
 
     def __init__(self, openai_client: AsyncOpenAI | None, persist_dir: str | None = None):
-        persist_dir = persist_dir or str(app_home() / "data" / "chroma")
-        self._openai = openai_client
-        self._collection = None
-        try:
-            import chromadb
-        except ImportError:
-            logger.warning("chromadb no está instalado — dedup de categorías (búsqueda semántica) deshabilitado.")
-            return
-        client = chromadb.PersistentClient(path=persist_dir)
-        self._collection = client.get_or_create_collection(
-            name=self.COLLECTION,
-            metadata={"hnsw:space": "cosine"},
+        super().__init__(
+            openai_client,
+            collection_name=self.COLLECTION,
+            logger=logger,
+            disabled_log_msg="chromadb no está instalado — dedup de categorías (búsqueda semántica) deshabilitado.",
+            persist_dir=persist_dir,
         )
 
     async def upsert_category(self, category_id: int, embedding_text: str) -> bool:
@@ -68,13 +56,6 @@ class CategoriesStore:
         ids = results["ids"][0] if results["ids"] else []
         distances = results["distances"][0] if results["distances"] else []
         return [(int(category_id), distance) for category_id, distance in zip(ids, distances)]
-
-    async def _embed(self, text: str) -> list[float]:
-        response = await self._openai.embeddings.create(
-            input=text,
-            model=self.EMBED_MODEL,
-        )
-        return response.data[0].embedding
 
 
 def embedding_text(name: str, description: str) -> str:
