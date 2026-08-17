@@ -10,10 +10,8 @@ import logging
 import os
 from typing import Optional
 
-import anthropic
-import openai
-
 from src.db.database import Category
+from src.llm.backend import call_llm_backend
 
 logger = logging.getLogger("unified.classifier")
 
@@ -151,76 +149,15 @@ def suggest_new_categories(
         return []
 
 
-def _call_backend(
-    prompt: str,
-    system: str,
-    backend: str,
-    *,
-    temperature: float,
-    max_tokens: int,
-    json_mode: bool,
-    ollama_num_ctx: int = 4096,
-) -> str:
-    """Shared triple-branch (claude/ollama/gpt) LLM call, extracted from the
-    formerly-duplicated bodies of `_call_llm` and `_call_suggest_llm` (design
-    decision A5). All three callers (`_call_llm`, `_call_suggest_llm`,
-    `_call_judge_llm`) delegate here — request shape per backend is
-    characterized by tests/unit/test_classifier_judge.py, written before this
-    extraction existed."""
-    if backend == "claude":
-        client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
-        msg = client.messages.create(
-            model="claude-haiku-4-5-20251001",
-            max_tokens=max_tokens,
-            system=system,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        return msg.content[0].text
-
-    if backend == "ollama":
-        client = openai.OpenAI(
-            api_key="ollama",
-            base_url=os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1"),
-        )
-        resp = client.chat.completions.create(
-            model=os.getenv("OLLAMA_MODEL", "qwen3:4b"),
-            max_completion_tokens=max_tokens,
-            temperature=temperature,
-            messages=[
-                {"role": "system", "content": system},
-                {"role": "user", "content": "/no_think\n" + prompt},
-            ],
-            extra_body={"options": {"think": False, "num_ctx": ollama_num_ctx}},
-        )
-        return resp.choices[0].message.content
-
-    # default: gpt
-    client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-    kwargs = {}
-    if json_mode:
-        kwargs["response_format"] = {"type": "json_object"}
-    resp = client.chat.completions.create(
-        model="gpt-5.4-nano",
-        max_completion_tokens=max_tokens,
-        temperature=temperature,
-        messages=[
-            {"role": "system", "content": system},
-            {"role": "user", "content": prompt},
-        ],
-        **kwargs,
-    )
-    return resp.choices[0].message.content
-
-
 def _call_suggest_llm(prompt: str, backend: str) -> str:
-    return _call_backend(
+    return call_llm_backend(
         prompt, _SUGGEST_SYSTEM, backend,
         temperature=0.3, max_tokens=512, json_mode=True, ollama_num_ctx=8192,
     )
 
 
 def _call_llm(prompt: str, backend: str) -> str:
-    return _call_backend(
+    return call_llm_backend(
         prompt, _SYSTEM, backend,
         temperature=0.0, max_tokens=512, json_mode=True, ollama_num_ctx=4096,
     )
@@ -248,7 +185,7 @@ def _build_judge_prompt(name: str, description: str, existing: list[Category]) -
 
 
 def _call_judge_llm(prompt: str, backend: str) -> str:
-    return _call_backend(
+    return call_llm_backend(
         prompt, _JUDGE_SYSTEM, backend,
         temperature=0.0, max_tokens=128, json_mode=True, ollama_num_ctx=4096,
     )
@@ -306,7 +243,7 @@ def _build_parent_prompt(children: list[Category]) -> str:
 
 
 def _call_parent_llm(prompt: str, backend: str) -> str:
-    return _call_backend(
+    return call_llm_backend(
         prompt, _PARENT_SYSTEM, backend,
         temperature=0.2, max_tokens=192, json_mode=True, ollama_num_ctx=4096,
     )

@@ -5,11 +5,13 @@ Two concerns, per design (sdd/categorias-jerarquicas, design obs #823, decision 
 
 1. CHARACTERIZATION tests of the CURRENT per-backend request kwargs for
    `_call_llm` (used by classify_segments_batch) and `_call_suggest_llm`
-   (used by suggest_new_categories), written BEFORE extracting the shared
-   `_call_backend()` helper. These must stay green after the extraction
-   (task 2.5 REFACTOR) — they are the regression safety net for the one
-   part of this PR with real regression exposure (the live classification
-   path had no per-backend test coverage before this change).
+   (used by suggest_new_categories) — request shape is produced by the
+   shared `call_llm_backend()` helper in src/llm/backend.py (also used by
+   tool_extractor.py and session_processor.py, which previously
+   hand-rolled the same claude/ollama/gpt triple-branch independently).
+   These are the regression safety net for the one part of this PR with
+   real regression exposure (the live classification path had no
+   per-backend test coverage before this change).
 
 2. RED tests for the new `judge_category_duplicate()` parse/validation
    matrix, which does not exist yet at RED time.
@@ -29,6 +31,7 @@ from src.db.database import Category
 
 class TestCallLlmCharacterization:
     def test_ollama_backend_kwargs(self, monkeypatch):
+        from src.llm import backend as llm_backend
         from src.video import classifier
 
         mock_openai_cls = MagicMock()
@@ -38,7 +41,7 @@ class TestCallLlmCharacterization:
         mock_client.chat.completions.create.return_value = mock_resp
         mock_openai_cls.return_value = mock_client
 
-        with patch.object(classifier.openai, "OpenAI", mock_openai_cls):
+        with patch.object(llm_backend.openai, "OpenAI", mock_openai_cls):
             result = classifier._call_llm("some prompt", "ollama")
 
         assert result == '{"classifications": []}'
@@ -54,6 +57,7 @@ class TestCallLlmCharacterization:
         assert "response_format" not in create_kwargs
 
     def test_gpt_backend_kwargs(self, monkeypatch):
+        from src.llm import backend as llm_backend
         from src.video import classifier
 
         mock_openai_cls = MagicMock()
@@ -63,7 +67,7 @@ class TestCallLlmCharacterization:
         mock_client.chat.completions.create.return_value = mock_resp
         mock_openai_cls.return_value = mock_client
 
-        with patch.object(classifier.openai, "OpenAI", mock_openai_cls):
+        with patch.object(llm_backend.openai, "OpenAI", mock_openai_cls):
             result = classifier._call_llm("some prompt", "gpt")
 
         assert result == '{"classifications": []}'
@@ -77,6 +81,7 @@ class TestCallLlmCharacterization:
         assert create_kwargs["response_format"] == {"type": "json_object"}
 
     def test_claude_backend_kwargs(self, monkeypatch):
+        from src.llm import backend as llm_backend
         from src.video import classifier
 
         mock_anthropic_cls = MagicMock()
@@ -86,7 +91,7 @@ class TestCallLlmCharacterization:
         mock_client.messages.create.return_value = mock_msg
         mock_anthropic_cls.return_value = mock_client
 
-        with patch.object(classifier.anthropic, "Anthropic", mock_anthropic_cls):
+        with patch.object(llm_backend.anthropic, "Anthropic", mock_anthropic_cls):
             result = classifier._call_llm("some prompt", "claude")
 
         assert result == '{"classifications": []}'
@@ -102,6 +107,7 @@ class TestCallLlmCharacterization:
 
 class TestCallSuggestLlmCharacterization:
     def test_ollama_backend_kwargs(self, monkeypatch):
+        from src.llm import backend as llm_backend
         from src.video import classifier
 
         mock_openai_cls = MagicMock()
@@ -111,7 +117,7 @@ class TestCallSuggestLlmCharacterization:
         mock_client.chat.completions.create.return_value = mock_resp
         mock_openai_cls.return_value = mock_client
 
-        with patch.object(classifier.openai, "OpenAI", mock_openai_cls):
+        with patch.object(llm_backend.openai, "OpenAI", mock_openai_cls):
             result = classifier._call_suggest_llm("some prompt", "ollama")
 
         assert result == '{"suggestions": []}'
@@ -122,6 +128,7 @@ class TestCallSuggestLlmCharacterization:
         assert "response_format" not in create_kwargs
 
     def test_gpt_backend_kwargs(self, monkeypatch):
+        from src.llm import backend as llm_backend
         from src.video import classifier
 
         mock_openai_cls = MagicMock()
@@ -131,7 +138,7 @@ class TestCallSuggestLlmCharacterization:
         mock_client.chat.completions.create.return_value = mock_resp
         mock_openai_cls.return_value = mock_client
 
-        with patch.object(classifier.openai, "OpenAI", mock_openai_cls):
+        with patch.object(llm_backend.openai, "OpenAI", mock_openai_cls):
             result = classifier._call_suggest_llm("some prompt", "gpt")
 
         assert result == '{"suggestions": []}'
@@ -140,6 +147,7 @@ class TestCallSuggestLlmCharacterization:
         assert create_kwargs["response_format"] == {"type": "json_object"}
 
     def test_claude_backend_kwargs(self, monkeypatch):
+        from src.llm import backend as llm_backend
         from src.video import classifier
 
         mock_anthropic_cls = MagicMock()
@@ -149,7 +157,7 @@ class TestCallSuggestLlmCharacterization:
         mock_client.messages.create.return_value = mock_msg
         mock_anthropic_cls.return_value = mock_client
 
-        with patch.object(classifier.anthropic, "Anthropic", mock_anthropic_cls):
+        with patch.object(llm_backend.anthropic, "Anthropic", mock_anthropic_cls):
             result = classifier._call_suggest_llm("some prompt", "claude")
 
         assert result == '{"suggestions": []}'

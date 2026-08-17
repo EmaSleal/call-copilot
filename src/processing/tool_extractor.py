@@ -17,8 +17,6 @@ import os
 import sqlite3
 from pathlib import Path
 
-import anthropic
-import openai
 from openai import AsyncOpenAI
 
 from src.db.database import (
@@ -30,6 +28,7 @@ from src.db.database import (
     normalize_tool_name,
     save_tool_mention,
 )
+from src.llm.backend import call_llm_backend
 from src.rag.tools_store import ToolsCatalogStore
 
 logger = logging.getLogger("call_copilot.processing.tool_extractor")
@@ -62,47 +61,10 @@ def _call_tools_llm(transcript: str) -> str:
     This is a private function so tests can patch it at the module level.
     """
     backend = os.getenv("LLM_BACKEND", "ollama")
-
-    if backend == "claude":
-        client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
-        msg = client.messages.create(
-            model="claude-haiku-4-5-20251001",
-            max_tokens=2048,
-            system=_TOOLS_SYSTEM,
-            messages=[{"role": "user", "content": transcript}],
-        )
-        return msg.content[0].text
-
-    if backend == "ollama":
-        client = openai.OpenAI(
-            api_key="ollama",
-            base_url=os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1"),
-        )
-        resp = client.chat.completions.create(
-            model=os.getenv("OLLAMA_MODEL", "qwen3:4b"),
-            max_completion_tokens=2048,
-            temperature=0.3,
-            messages=[
-                {"role": "system", "content": _TOOLS_SYSTEM},
-                {"role": "user", "content": "/no_think\n" + transcript},
-            ],
-            extra_body={"options": {"think": False, "num_ctx": 8192}},
-        )
-        return resp.choices[0].message.content
-
-    # default: gpt
-    client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-    resp = client.chat.completions.create(
-        model="gpt-5.4-nano",
-        max_completion_tokens=2048,
-        temperature=0.3,
-        messages=[
-            {"role": "system", "content": _TOOLS_SYSTEM},
-            {"role": "user", "content": transcript},
-        ],
-        response_format={"type": "json_object"},
+    return call_llm_backend(
+        transcript, _TOOLS_SYSTEM, backend,
+        temperature=0.3, max_tokens=2048, json_mode=True, ollama_num_ctx=8192,
     )
-    return resp.choices[0].message.content
 
 
 def _parse_tools_response(raw: str) -> list[dict]:

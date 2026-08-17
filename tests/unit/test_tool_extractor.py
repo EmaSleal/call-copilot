@@ -50,6 +50,7 @@ def with_openai_key(monkeypatch):
 
 class TestCallToolsLlmBackendDispatch:
     def test_ollama_backend_used_by_default(self, monkeypatch):
+        from src.llm import backend as llm_backend
         from src.processing import tool_extractor
 
         monkeypatch.delenv("LLM_BACKEND", raising=False)
@@ -60,7 +61,7 @@ class TestCallToolsLlmBackendDispatch:
         mock_client.chat.completions.create.return_value = mock_resp
         mock_openai_cls.return_value = mock_client
 
-        with patch.object(tool_extractor.openai, "OpenAI", mock_openai_cls):
+        with patch.object(llm_backend.openai, "OpenAI", mock_openai_cls):
             result = tool_extractor._call_tools_llm("some transcript")
 
         assert result == '{"tools": []}'
@@ -70,6 +71,7 @@ class TestCallToolsLlmBackendDispatch:
         assert "base_url" in kwargs
 
     def test_gpt_backend_dispatches_to_openai(self, monkeypatch):
+        from src.llm import backend as llm_backend
         from src.processing import tool_extractor
 
         monkeypatch.setenv("LLM_BACKEND", "gpt")
@@ -80,7 +82,7 @@ class TestCallToolsLlmBackendDispatch:
         mock_client.chat.completions.create.return_value = mock_resp
         mock_openai_cls.return_value = mock_client
 
-        with patch.object(tool_extractor.openai, "OpenAI", mock_openai_cls):
+        with patch.object(llm_backend.openai, "OpenAI", mock_openai_cls):
             result = tool_extractor._call_tools_llm("some transcript")
 
         assert result == '{"tools": []}'
@@ -88,6 +90,7 @@ class TestCallToolsLlmBackendDispatch:
         assert kwargs["api_key"] != "ollama"
 
     def test_claude_backend_dispatches_to_anthropic(self, monkeypatch):
+        from src.llm import backend as llm_backend
         from src.processing import tool_extractor
 
         monkeypatch.setenv("LLM_BACKEND", "claude")
@@ -98,7 +101,7 @@ class TestCallToolsLlmBackendDispatch:
         mock_client.messages.create.return_value = mock_msg
         mock_anthropic_cls.return_value = mock_client
 
-        with patch.object(tool_extractor.anthropic, "Anthropic", mock_anthropic_cls):
+        with patch.object(llm_backend.anthropic, "Anthropic", mock_anthropic_cls):
             result = tool_extractor._call_tools_llm("some transcript")
 
         assert result == '{"tools": []}'
