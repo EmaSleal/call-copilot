@@ -2,7 +2,6 @@
 
 import asyncio
 import shutil
-import sqlite3
 
 from textual.app import ComposeResult
 from textual.containers import Horizontal
@@ -18,93 +17,16 @@ from textual.widgets import (
 
 import src.db.database as db
 from src.core import config_defaults
-from src.processing.category_dedup import DedupVerdict, dedup_suggestions, sync_category_embedding
+from src.processing.category_dedup import (
+    DedupVerdict,
+    create_checked_suggestions,
+    dedup_suggestions,
+    sync_category_embedding,
+    verdict_label,
+)
+from src.processing.category_reclassify import find_otro_category, reclassify_otros
 from src.tui.messages import CategoriesChanged
 from src.tui.screens.session_modal import SessionModal
-
-
-def _find_otro_category(categories: list):
-    """Locate the fallback 'Otro'/'Otros' category by name, case-insensitive.
-
-    Pure function — no side effects, easy to test without Textual.
-    """
-    return next((c for c in categories if c.name.lower() in ("otro", "otros")), None)
-
-
-def _verdict_label(verdict: DedupVerdict) -> str:
-    """Option label for the suggestions `SelectionList`: a genuinely new
-    suggestion shows its name/description; a suggestion `dedup_suggestions()`
-    matched to an existing category is prefixed with "≈" and shows what it
-    already duplicates, with the cosine distance appended on the embeddings
-    path (spec: Duplicate shown with override).
-
-    Pure function — no side effects, easy to test without Textual.
-    """
-    s = verdict.suggestion
-    if verdict.match is None:
-        return f"{s['name']} — {s['description']}"
-    label = f"≈ {s['name']} — Ya existe: {verdict.match.name}"
-    if verdict.backend == "embeddings" and verdict.distance is not None:
-        label += f" (d={verdict.distance:.2f})"
-    return label
-
-
-async def _create_checked_suggestions(
-    selected_indices, verdicts: list[DedupVerdict]
-) -> tuple[list[str], list[str], list[str]]:
-    """Create every checked suggestion, regardless of its dedup verdict —
-    checking a suggestion labelled as a duplicate IS the force-create
-    override (spec: User overrides). `db.create_category` is UNIQUE-name
-    safe: an actual collision at write time is reported as skipped instead
-    of crashing the TUI (spec: Duplicates surfaced, never silently
-    dropped). Returns `(added, forced, skipped)` category names.
-    """
-    added, forced, skipped = [], [], []
-    for i in selected_indices:
-        if i >= len(verdicts):
-            continue
-        verdict = verdicts[i]
-        s = verdict.suggestion
-        try:
-            created = db.create_category(s["name"], s["description"])
-        except sqlite3.IntegrityError:
-            skipped.append(s["name"])
-            continue
-        (forced if verdict.match is not None else added).append(s["name"])
-        sync_category_embedding(created)
-    return added, forced, skipped
-
-
-async def _reclassify_otros(session_id: int) -> int:
-    """
-    Re-check current 'Otro' segments of a session against the full, up-to-date
-    category set (including categories just added) — without reprocessing the
-    whole video. Returns the number of segments moved.
-    """
-    from src.video.classifier import classify_segments_batch
-
-    categories = db.get_categories()
-    otros = _find_otro_category(categories)
-    if otros is None:
-        return 0
-
-    segments = db.get_segments_by_category(session_id, otros.id)
-    if not segments:
-        return 0
-
-    candidates = [c for c in categories if c.id != otros.id]
-    texts = [s.text for s in segments]
-    loop = asyncio.get_running_loop()
-    cat_ids = await loop.run_in_executor(
-        None, lambda: classify_segments_batch(texts, candidates)
-    )
-
-    moved = 0
-    for seg, cat_id in zip(segments, cat_ids):
-        if cat_id is not None:
-            db.update_segment_category(seg.id, cat_id)
-            moved += 1
-    return moved
 
 
 class VideoTab(TabPane):
@@ -247,7 +169,7 @@ class VideoTab(TabPane):
 
         try:
             categories = db.get_categories()
-            otros = _find_otro_category(categories)
+            otros = find_otro_category(categories)
             segments = db.get_segments_by_category(
                 session_id, otros.id if otros else None
             )
@@ -270,7 +192,7 @@ class VideoTab(TabPane):
             btn_add.disabled = True
             if verdicts:
                 for i, v in enumerate(verdicts):
-                    sel.add_option((_verdict_label(v), i))
+                    sel.add_option((verdict_label(v), i))
                 btn_add.disabled = False
                 fb.update(
                     f"[green]{len(verdicts)} sugerencia(s). Marcá las que querés agregar.[/green]"
@@ -290,7 +212,7 @@ class VideoTab(TabPane):
             )
             return
 
-        added, forced, skipped = await _create_checked_suggestions(
+        added, forced, skipped = await create_checked_suggestions(
             selected_indices, self._verdicts
         )
 
@@ -320,7 +242,7 @@ class VideoTab(TabPane):
             return
 
         fb.update(f"[green]{' '.join(parts)}[/green] Reclasificando 'Otros'...")
-        moved = await _reclassify_otros(session_id)
+        moved = await reclassify_otros(session_id)
         fb.update(
             f"[green]{' '.join(parts)} {moved} segmento(s) reclasificado(s) desde 'Otro'.[/green]"
         )

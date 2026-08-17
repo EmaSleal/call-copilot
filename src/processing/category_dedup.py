@@ -17,9 +17,11 @@ mode resolves to match=None, backend="none" (i.e. "genuinely new").
 
 import logging
 import os
+import sqlite3
 from dataclasses import dataclass
 from typing import Optional
 
+import src.db.database as db
 from src.db.database import Category
 from src.rag.categories_store import CategoriesStore, embedding_text
 from src.video.classifier import judge_category_duplicate
@@ -130,6 +132,53 @@ def sync_category_embedding(category: Category) -> None:
         asyncio.run(_sync_category_embedding(category))
     except Exception as e:
         logger.error("sync_category_embedding failed for category_id=%s: %s", category.id, e)
+
+
+def verdict_label(verdict: DedupVerdict) -> str:
+    """Option label for the suggestions `SelectionList`: a genuinely new
+    suggestion shows its name/description; a suggestion `dedup_suggestions()`
+    matched to an existing category is prefixed with "≈" and shows what it
+    already duplicates, with the cosine distance appended on the embeddings
+    path (spec: Duplicate shown with override).
+
+    Pure function — no side effects, easy to test without Textual. Shared by
+    both TUI call sites (src/tui/tabs/video.py and
+    src/tui/screens/category_reclassify_modal.py) so neither duplicates it.
+    """
+    s = verdict.suggestion
+    if verdict.match is None:
+        return f"{s['name']} — {s['description']}"
+    label = f"≈ {s['name']} — Ya existe: {verdict.match.name}"
+    if verdict.backend == "embeddings" and verdict.distance is not None:
+        label += f" (d={verdict.distance:.2f})"
+    return label
+
+
+async def create_checked_suggestions(
+    selected_indices, verdicts: list[DedupVerdict]
+) -> tuple[list[str], list[str], list[str]]:
+    """Create every checked suggestion, regardless of its dedup verdict —
+    checking a suggestion labelled as a duplicate IS the force-create
+    override (spec: User overrides). `db.create_category` is UNIQUE-name
+    safe: an actual collision at write time is reported as skipped instead
+    of crashing the TUI (spec: Duplicates surfaced, never silently
+    dropped). Returns `(added, forced, skipped)` category names. Shared by
+    both TUI call sites, see `verdict_label` above.
+    """
+    added, forced, skipped = [], [], []
+    for i in selected_indices:
+        if i >= len(verdicts):
+            continue
+        verdict = verdicts[i]
+        s = verdict.suggestion
+        try:
+            created = db.create_category(s["name"], s["description"])
+        except sqlite3.IntegrityError:
+            skipped.append(s["name"])
+            continue
+        (forced if verdict.match is not None else added).append(s["name"])
+        sync_category_embedding(created)
+    return added, forced, skipped
 
 
 async def _forget_category_embedding(category_id: int) -> None:

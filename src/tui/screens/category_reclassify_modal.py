@@ -8,7 +8,6 @@ its own modal (same precedent as SettingsScreen/ProfileManagerScreen).
 """
 
 import asyncio
-import sqlite3
 
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
@@ -16,108 +15,15 @@ from textual.screen import ModalScreen
 from textual.widgets import Button, Label, Select, SelectionList
 
 import src.db.database as db
-from src.processing.category_dedup import DedupVerdict, dedup_suggestions, sync_category_embedding
+from src.processing.category_dedup import (
+    DedupVerdict,
+    create_checked_suggestions,
+    dedup_suggestions,
+    sync_category_embedding,
+    verdict_label,
+)
+from src.processing.category_reclassify import reclassify_category
 from src.tui.messages import CategoriesChanged
-
-
-def _verdict_label(verdict: DedupVerdict) -> str:
-    """Option label for the suggestions `SelectionList` — identical wiring
-    to `src.tui.tabs.video._verdict_label` (spec: Duplicate shown with
-    override). Kept as its own private copy rather than a cross-TUI import:
-    design A4 explicitly removed the modal's prior dependency on
-    `video._partition_new_suggestions` as a smell; both screens instead
-    share the one `dedup_suggestions()` verdict-computation function.
-
-    Pure function — no side effects, easy to test without Textual.
-    """
-    s = verdict.suggestion
-    if verdict.match is None:
-        return f"{s['name']} — {s['description']}"
-    label = f"≈ {s['name']} — Ya existe: {verdict.match.name}"
-    if verdict.backend == "embeddings" and verdict.distance is not None:
-        label += f" (d={verdict.distance:.2f})"
-    return label
-
-
-async def _create_checked_suggestions(
-    selected_indices, verdicts: list[DedupVerdict]
-) -> tuple[list[str], list[str], list[str]]:
-    """Create every checked suggestion, regardless of its dedup verdict —
-    checking a suggestion labelled as a duplicate IS the force-create
-    override (spec: User overrides). `db.create_category` is UNIQUE-name
-    safe: an actual collision at write time is reported as skipped instead
-    of crashing the TUI (spec: Duplicates surfaced, never silently
-    dropped). Returns `(added, forced, skipped)` category names. Identical
-    wiring to `src.tui.tabs.video._create_checked_suggestions`, see
-    `_verdict_label` above for why this is a private copy, not an import.
-    """
-    added, forced, skipped = [], [], []
-    for i in selected_indices:
-        if i >= len(verdicts):
-            continue
-        verdict = verdicts[i]
-        s = verdict.suggestion
-        try:
-            created = db.create_category(s["name"], s["description"])
-        except sqlite3.IntegrityError:
-            skipped.append(s["name"])
-            continue
-        (forced if verdict.match is not None else added).append(s["name"])
-        sync_category_embedding(created)
-    return added, forced, skipped
-
-
-async def _reclassify_category(category_id: int) -> int:
-    """
-    Re-check every segment (video AND call, across every session — not
-    scoped to one) currently in category_id against the full, up-to-date
-    category set (including categories just added), and move whichever
-    ones now fit a different category better. Returns the number moved.
-
-    Generalizes Video's _reclassify_otros: any category, not just
-    "Otro"/"Otros", and global instead of session-scoped — a category like
-    "Técnico" can span dozens of sessions, and breaking it down needs the
-    LLM to see the whole pattern at once.
-
-    Unlike _reclassify_otros, the target category is NOT excluded from the
-    candidates offered to the classifier. Excluding "Otro" makes sense —
-    it's a junk/fallback bucket, nothing should legitimately stay there.
-    But this tool also runs on real, substantive categories: excluding the
-    target forces every single fragment out with no "it still belongs
-    here" option, scattering genuinely-fitting content into whatever
-    unrelated category is the closest wrong match. (Confirmed against
-    real data before this fix: 100% of a "Técnico" bucket got force-moved
-    even though only a fraction actually matched the new sub-categories.)
-    A fragment the classifier re-picks into category_id itself is left
-    alone — that's not a move, so it isn't written or counted.
-    """
-    from src.video.classifier import classify_segments_batch
-
-    categories = db.get_categories()
-
-    video_segments = db.get_segments_by_category_global(category_id)
-    call_segments = db.get_call_segments_by_category_global(category_id)
-
-    loop = asyncio.get_running_loop()
-    moved = 0
-
-    if video_segments:
-        texts = [s.text for s in video_segments]
-        cat_ids = await loop.run_in_executor(None, lambda: classify_segments_batch(texts, categories))
-        for seg, cat_id in zip(video_segments, cat_ids):
-            if cat_id is not None and cat_id != category_id:
-                db.update_segment_category(seg.id, cat_id)
-                moved += 1
-
-    if call_segments:
-        texts = [s.text for s in call_segments]
-        cat_ids = await loop.run_in_executor(None, lambda: classify_segments_batch(texts, categories))
-        for seg, cat_id in zip(call_segments, cat_ids):
-            if cat_id is not None and cat_id != category_id:
-                db.update_call_segment_category(seg.id, cat_id)
-                moved += 1
-
-    return moved
 
 
 class CategoryReclassifyModal(ModalScreen):
@@ -229,7 +135,7 @@ class CategoryReclassifyModal(ModalScreen):
             btn_add.disabled = True
             if verdicts:
                 for i, v in enumerate(verdicts):
-                    sel.add_option((_verdict_label(v), i))
+                    sel.add_option((verdict_label(v), i))
                 btn_add.disabled = False
                 fb.update(
                     f"[green]{len(verdicts)} sugerencia(s) de {len(all_texts)} fragmentos."
@@ -248,7 +154,7 @@ class CategoryReclassifyModal(ModalScreen):
             fb.update("[yellow]Marcá al menos una sugerencia antes de agregar.[/yellow]")
             return
 
-        added, forced, skipped = await _create_checked_suggestions(
+        added, forced, skipped = await create_checked_suggestions(
             selected_indices, self._verdicts
         )
 
@@ -280,5 +186,5 @@ class CategoryReclassifyModal(ModalScreen):
             return
 
         fb.update(f"[green]{' '.join(parts)}[/green] Reclasificando...")
-        moved = await _reclassify_category(target_cat_id)
+        moved = await reclassify_category(target_cat_id)
         fb.update(f"[green]{' '.join(parts)} {moved} fragmento(s) reclasificado(s).[/green]")
