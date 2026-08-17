@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.1](https://github.com/EmaSleal/call-copilot/compare/v0.6.0...v0.6.1) (2026-08-17)
+
+
+### Bug Fixes
+
+* **ci:** install rich for the categories color-swatch tests ([9b80ca6](https://github.com/EmaSleal/call-copilot/commit/9b80ca6084e69f8be7c49569423e6f137ecc6509))
+
 ## [0.6.0](https://github.com/EmaSleal/call-copilot/compare/v0.5.0...v0.6.0) (2026-08-17)
 
 
