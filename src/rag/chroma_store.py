@@ -3,35 +3,24 @@ import uuid
 from datetime import datetime
 from openai import AsyncOpenAI
 
-from src.core.paths import app_home
+from src.rag.base import ChromaEmbeddingStore
 
 logger = logging.getLogger("call_copilot.rag.chroma_store")
 
 
-class RAGStore:
-    """ChromaDB-backed segment store with OpenAI embeddings.
-
-    chromadb is imported lazily so the app can start (and a call can run
-    without live RAG) even when it isn't installed — matches the other
-    soft-dependency guards in this codebase (OpenAI-optional embedding)."""
-
-    EMBED_MODEL = "text-embedding-3-small"
+class RAGStore(ChromaEmbeddingStore):
+    """ChromaDB-backed segment store with OpenAI embeddings, scoped to one
+    call session (collection is discarded with the session)."""
 
     def __init__(self, session_id: str, openai_client: AsyncOpenAI, persist_dir: str | None = None):
-        persist_dir = persist_dir or str(app_home() / "data" / "chroma")
-        self._openai = openai_client
         self.session_id = session_id
         self.collection_name = f"call_{session_id}"
-        self._collection = None
-        try:
-            import chromadb
-        except ImportError:
-            logger.warning("chromadb no está instalado — RAG en vivo deshabilitado para esta llamada.")
-            return
-        client = chromadb.PersistentClient(path=persist_dir)
-        self._collection = client.get_or_create_collection(
-            name=self.collection_name,
-            metadata={"hnsw:space": "cosine"},
+        super().__init__(
+            openai_client,
+            collection_name=self.collection_name,
+            logger=logger,
+            disabled_log_msg="chromadb no está instalado — RAG en vivo deshabilitado para esta llamada.",
+            persist_dir=persist_dir,
         )
 
     async def add_segment(self, text: str, timestamp: str | None = None) -> None:
@@ -57,10 +46,3 @@ class RAGStore:
             n_results=min(top_k, count),
         )
         return results["documents"][0] if results["documents"] else []
-
-    async def _embed(self, text: str) -> list[float]:
-        response = await self._openai.embeddings.create(
-            input=text,
-            model=self.EMBED_MODEL,
-        )
-        return response.data[0].embedding

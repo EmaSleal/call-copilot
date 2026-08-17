@@ -95,6 +95,37 @@ class TestAddTool:
 
 
 # ─────────────────────────────────────────────────────────────
+# delete_tool
+# ─────────────────────────────────────────────────────────────
+
+class TestDeleteTool:
+    @pytest.mark.asyncio
+    async def test_delete_tool_calls_collection_delete_keyed_by_str_id(
+        self, mock_chromadb, mock_collection, mock_openai_client
+    ):
+        from src.rag.tools_store import ToolsCatalogStore
+
+        store = ToolsCatalogStore(openai_client=mock_openai_client)
+        result = await store.delete_tool(tool_id=42)
+
+        assert result is True
+        mock_collection.delete.assert_called_once_with(ids=["42"])
+
+    @pytest.mark.asyncio
+    async def test_delete_tool_without_collection_returns_false_and_does_not_raise(
+        self, monkeypatch, mock_openai_client
+    ):
+        from src.rag.tools_store import ToolsCatalogStore
+
+        monkeypatch.setitem(sys.modules, "chromadb", None)
+        store = ToolsCatalogStore(openai_client=mock_openai_client)
+
+        result = await store.delete_tool(tool_id=42)
+
+        assert result is False
+
+
+# ─────────────────────────────────────────────────────────────
 # Phase 4 — search
 # ─────────────────────────────────────────────────────────────
 
