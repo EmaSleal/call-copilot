@@ -23,18 +23,20 @@ concretas — la elección de provider concreto vive en `src/tui/bootstrap.py`
 
 ### La TUI (`src/tui/app.py`) — uso normal
 
-Seis tabs, todas sobre la misma base de datos:
+Siete tabs, todas sobre la misma base de datos:
 
 | Tab | Qué hace |
 |---|---|
 | **[1] Call Copilot** | Transcripción en vivo de una llamada + sugerencias del LLM en tiempo real. Perfil activo, selector de dispositivo de audio, botón de Configuración. |
 | **[2] Video** | Pega una URL de YouTube, la transcribe, clasifica los segmentos por categoría y genera el reporte HTML. |
 | **[3] Buscar** | Full-text search sobre los segmentos ya clasificados. |
-| **[4] Categorías** | CRUD de la taxonomía compartida entre video y llamadas. |
+| **[4] Categorías** | CRUD de la taxonomía compartida entre video y llamadas — un nivel de subcategorías (`└─`), color por categoría. |
 | **[5] Historial** | Sesiones de video y de llamada unificadas (vista `unified_sessions`/`unified_segments` en SQLite), con columna de origen. |
 | **[6] Tools** | Catálogo de tecnologías/herramientas mencionadas en las llamadas, extraídas automáticamente post-sesión (`src/processing/tool_extractor.py`). Lista todo por default; búsqueda semántica (RAG) si hay `OPENAI_API_KEY` configurada. |
+| **[7] Pendientes** | Deletes propuestos por el agente de mantenimiento del catálogo (`src/agent/maintenance.py`), a la espera de aprobación humana — el agente escribe solo, pero nunca borra sin que vos lo confirmes acá. |
 
 `Ctrl+S` abre el panel de **Configuración** (modal) desde cualquier tab:
+idioma de la interfaz (Español/English, cambia en caliente sin reiniciar),
 proveedor LLM/STT en tiempo real, API keys (OpenAI/Anthropic/Deepgram),
 tamaño de modelo Whisper por uso, el umbral de silencio del VAD, y un botón
 para importar el catálogo de Tools desde una base externa (tech-scout, un
@@ -79,6 +81,14 @@ compartida).
   override de modelo opcional. Gestionables desde la TUI sin editar código.
 - **RAG opcional** (`src/rag/chroma_store.py`) — ChromaDB + embeddings de
   OpenAI para dar contexto de sesiones pasadas al LLM durante la llamada.
+- **Idioma de la UI en caliente, sin reiniciar** (`src/i18n/`) — cambiar
+  Español/English desde Configuración reescribe en el momento los textos de
+  todas las pantallas montadas (`App.retranslate_all()`), sin recomponer
+  widgets ni perder estado en curso (transcripción viva, formularios a
+  medio llenar). Única excepción: los atajos del footer se resuelven una
+  sola vez al arrancar el proceso — cambiar el idioma no los actualiza
+  hasta el próximo reinicio, porque Textual no expone una forma de
+  reasignarlos en caliente.
 
 ## Instalación
 
@@ -154,15 +164,18 @@ python main.py
 
 SQLite en `data/app.db` corriendo desde el repo, o `~/.call-copilot/data/app.db`
 si instalaste vía pipx/`install.sh` (`src/core/paths.py` resuelve cuál según
-si hay un checkout de git al lado del código corriendo). Siete tablas —
+si hay un checkout de git al lado del código corriendo). Nueve tablas —
 `categories`, `video_sessions`, `segments`, `call_sessions`,
-`call_segments`, `tools`, `tool_mentions` — más dos vistas de solo lectura
-(`unified_segments`, `unified_sessions`) que unifican video y llamadas para
-el tab Historial. `categories` es la única taxonomía realmente compartida
-entre video y llamadas; `video_sessions` y `call_sessions` son secuencias de
-id independientes. `tools`/`tool_mentions` alimentan el tab Tools — un tool
-mencionado en varias llamadas es una sola fila en `tools` con una
-`tool_mention` por cada mención (nunca se pisa el enriquecimiento del LLM).
+`call_segments`, `tools`, `tool_mentions`, `pending_actions`, `audit_log` —
+más dos vistas de solo lectura (`unified_segments`, `unified_sessions`) que
+unifican video y llamadas para el tab Historial. `categories` es la única
+taxonomía realmente compartida entre video y llamadas; `video_sessions` y
+`call_sessions` son secuencias de id independientes. `tools`/`tool_mentions`
+alimentan el tab Tools — un tool mencionado en varias llamadas es una sola
+fila en `tools` con una `tool_mention` por cada mención (nunca se pisa el
+enriquecimiento del LLM). `pending_actions`/`audit_log` respaldan el tab
+Pendientes — cada delete que el agente de mantenimiento propone queda
+encolado ahí hasta que un humano lo aprueba o rechaza.
 
 ## Pendiente / próximos pasos
 
