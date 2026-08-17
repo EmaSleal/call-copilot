@@ -1,9 +1,10 @@
 """Tab 5: Historial — browse past call/video sessions and their fragments."""
 
 from textual.app import ComposeResult
-from textual.widgets import Button, DataTable, Label, TabPane
+from textual.widgets import Button, DataTable, Label, TabbedContent, TabPane
 
 import src.db.database as db
+from src.i18n import t
 from src.tui.screens.category_reclassify_modal import CategoryReclassifyModal
 from src.tui.screens.fragment_edit_modal import FragmentEditModal
 
@@ -41,19 +42,41 @@ class HistorialTab(TabPane):
     """
 
     def __init__(self):
-        super().__init__("📋 Historial", id="tab-historial")
+        super().__init__(t("historial.tab_title"), id="tab-historial")
         self._selected_source: str | None = None
         self._selected_session_id: int | None = None
         self._categories_cache: dict[int, str] = {}
         self._current_fragments: dict[str, db.UnifiedSegment] = {}
 
     def compose(self) -> ComposeResult:
-        yield Label("Sesiones:")
+        yield Label(t("historial.sessions_label"), id="lbl-historial-sessions")
         yield DataTable(id="historial-sessions-table")
-        yield Label("Fragmentos:", id="lbl-historial-ideas")
+        yield Label(t("historial.fragments_label"), id="lbl-historial-ideas")
         yield DataTable(id="historial-ideas-table")
-        yield Button("🏷 Reclasificar categoría...", id="btn-open-reclassify", variant="default")
+        yield Button(t("historial.reclassify_button"), id="btn-open-reclassify", variant="default")
         yield Label("", id="historial-status")
+
+    def retranslate(self) -> None:
+        """Re-apply t() to static chrome and rebuild both DataTables'
+        columns (clear+re-add, then repopulate — mirrors video.py's
+        retranslate()). Sessions table repopulates unconditionally; the
+        ideas table only if a session is currently selected (otherwise it
+        stays empty with translated-but-empty headers, matching its normal
+        pre-selection state). Doesn't touch the status line (result
+        state)."""
+        self.query_one("#lbl-historial-sessions", Label).update(t("historial.sessions_label"))
+        self.query_one("#lbl-historial-ideas", Label).update(t("historial.fragments_label"))
+        self.query_one("#btn-open-reclassify", Button).label = t("historial.reclassify_button")
+        sessions_table = self.query_one("#historial-sessions-table", DataTable)
+        sessions_table.clear(columns=True)
+        ideas_table = self.query_one("#historial-ideas-table", DataTable)
+        ideas_table.clear(columns=True)
+        self._setup_tables()
+        self._refresh_sessions()
+        if self._selected_source is not None and self._selected_session_id is not None:
+            self._load_ideas_for_session(self._selected_source, self._selected_session_id)
+        tab = self.app.query_one(TabbedContent).get_tab("tab-historial")
+        tab.label = t("historial.tab_title")
 
     def on_mount(self) -> None:
         self._setup_tables()
@@ -75,11 +98,17 @@ class HistorialTab(TabPane):
     def _setup_tables(self) -> None:
         sessions_table = self.query_one("#historial-sessions-table", DataTable)
         sessions_table.cursor_type = "row"
-        sessions_table.add_columns("ID", "Fuente", "Título", "Fecha")
+        sessions_table.add_columns(
+            t("historial.column_id"), t("historial.column_source"),
+            t("historial.column_title"), t("historial.column_date"),
+        )
 
         ideas_table = self.query_one("#historial-ideas-table", DataTable)
         ideas_table.cursor_type = "row"
-        ideas_table.add_columns("#", "Fragmento", "Categoría")
+        ideas_table.add_columns(
+            t("historial.column_number"), t("historial.column_fragment"),
+            t("historial.column_category"),
+        )
 
     def _refresh_sessions(self) -> None:
         table = self.query_one("#historial-sessions-table", DataTable)
@@ -87,12 +116,12 @@ class HistorialTab(TabPane):
         sessions = _titled_sessions(db.get_unified_sessions())
         if not sessions:
             self.query_one("#historial-status", Label).update(
-                "[dim]No hay sesiones procesadas todavía.[/dim]"
+                f"[dim]{t('historial.no_sessions')}[/dim]"
             )
             return
         self.query_one("#historial-status", Label).update("")
         for s in sessions:
-            source_label = "Video" if s.source == "video" else "Llamada"
+            source_label = t("historial.source_video") if s.source == "video" else t("historial.source_call")
             date_display = (s.created_at or "")[:16]
             table.add_row(
                 str(s.id),
@@ -109,7 +138,7 @@ class HistorialTab(TabPane):
         fragments = db.get_unified_segments(source=source, session_id=session_id)
         if not fragments:
             self.query_one("#historial-status", Label).update(
-                "[dim]Esta sesión no tiene fragmentos procesados.[/dim]"
+                f"[dim]{t('historial.no_fragments')}[/dim]"
             )
             return
         self.query_one("#historial-status", Label).update("")

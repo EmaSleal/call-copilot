@@ -8,6 +8,8 @@ installing the full production stack.
 import sys
 from unittest.mock import MagicMock
 
+import pytest
+
 
 def _mock_module(name: str, **attrs) -> MagicMock:
     m = MagicMock()
@@ -71,3 +73,26 @@ if "websockets" not in sys.modules:
 if "dotenv" not in sys.modules:
     _mock_module("dotenv")
     _mock_module("python_dotenv")
+
+
+# ── i18n-hot-swap-tui: shared language fixtures ─────────────────────────────
+# Pin the active src.i18n language for a test body, restore after. Shared
+# across every migrated TUI module's tests (settings, call, video, ... —
+# see sdd/i18n-hot-swap-tui/tasks) instead of duplicating this per file.
+
+@pytest.fixture
+def english():
+    import src.i18n as i18n
+    original = i18n.get_language()
+    i18n.set_language("en")
+    yield
+    i18n.set_language(original)
+
+
+@pytest.fixture
+def spanish():
+    import src.i18n as i18n
+    original = i18n.get_language()
+    i18n.set_language("es")
+    yield
+    i18n.set_language(original)

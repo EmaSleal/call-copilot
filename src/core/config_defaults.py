@@ -22,6 +22,7 @@ DEFAULT_STT_BACKEND = "deepgram"
 DEFAULT_WHISPER_MODEL_CALL = "large-v3-turbo"
 DEFAULT_WHISPER_MODEL_VIDEO = "base"
 DEFAULT_SILENCE_THRESHOLD_MS = 2000
+DEFAULT_LANGUAGE = "en"
 
 WHISPER_SIZES = ("tiny", "base", "small", "medium", "large-v3", "large-v3-turbo")
 
@@ -106,6 +107,11 @@ def silence_threshold_ms() -> int:
         return int(value)
     except ValueError:
         return DEFAULT_SILENCE_THRESHOLD_MS
+
+
+def language() -> str:
+    """Idioma activo de la UI ('es' o 'en'). Default: 'en'."""
+    return _getenv_or_default("LANGUAGE", DEFAULT_LANGUAGE)
 
 
 def scope_of(key: str) -> Scope:

@@ -23,9 +23,10 @@ import sys
 from dotenv import load_dotenv
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.widgets import Footer, Header, TabbedContent
+from textual.widgets import Footer, Header, TabbedContent, TabPane
 
 from src.db.database import init_db
+from src.i18n import t
 from src.tui import bootstrap
 from src.tui.messages import CategoriesChanged
 from src.tui.screens.settings import SettingsScreen
@@ -87,16 +88,21 @@ class UnifiedApp(App):
     Select { margin-bottom: 1; }
     """
 
+    # Footer hint text is resolved once here, at class-definition/import
+    # time — the documented restart-required i18n exception (Textual has no
+    # runtime API to reassign Binding description text; see
+    # sdd/i18n-hot-swap-tui/design). A live language switch via Settings
+    # leaves these labels in whatever language the process started in.
     BINDINGS = [
-        Binding("ctrl+q", "quit", "Salir"),
+        Binding("ctrl+q", "quit", t("app.quit_binding")),
         Binding("1", "switch_tab('tab-call')", "Call Copilot"),
         Binding("2", "switch_tab('tab-video')", "Video"),
-        Binding("3", "switch_tab('tab-search')", "Buscar"),
-        Binding("4", "switch_tab('tab-categories')", "Categorías"),
-        Binding("5", "switch_tab('tab-historial')", "Historial"),
+        Binding("3", "switch_tab('tab-search')", t("app.search_binding")),
+        Binding("4", "switch_tab('tab-categories')", t("app.categories_binding")),
+        Binding("5", "switch_tab('tab-historial')", t("app.historial_binding")),
         Binding("6", "switch_tab('tab-tools')", "Tools"),
-        Binding("7", "switch_tab('tab-pending')", "Pendientes"),
-        Binding("ctrl+s", "open_settings", "Configuración"),
+        Binding("7", "switch_tab('tab-pending')", t("app.pending_binding")),
+        Binding("ctrl+s", "open_settings", t("app.settings_binding")),
     ]
 
     TITLE = "Unified Copilot"
@@ -123,6 +129,24 @@ class UnifiedApp(App):
 
     def on_categories_changed(self, event: CategoriesChanged) -> None:
         self.query_one(CategoriesTab)._refresh()
+
+    def retranslate_all(self) -> None:
+        """
+        Broadcast a live language change to every mounted TabPane and open
+        modal screen. Opt-in via a `retranslate()` method — mirrors the
+        existing `refresh_data()` convention below, so panes/screens with no
+        translated content simply don't implement it. Reassigns widget text
+        in place (no recompose), so live state like an in-progress call's
+        RichLog transcript or a typed Input value is never touched.
+        """
+        for pane in self.query(TabPane):
+            retranslate = getattr(pane, "retranslate", None)
+            if retranslate is not None:
+                retranslate()
+        for screen in self.screen_stack:
+            retranslate = getattr(screen, "retranslate", None)
+            if retranslate is not None:
+                retranslate()
 
     def on_tabbed_content_tab_activated(
         self, event: TabbedContent.TabActivated

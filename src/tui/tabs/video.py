@@ -12,11 +12,13 @@ from textual.widgets import (
     Label,
     ProgressBar,
     SelectionList,
+    TabbedContent,
     TabPane,
 )
 
 import src.db.database as db
 from src.core import config_defaults
+from src.i18n import t
 from src.processing.category_dedup import (
     DedupVerdict,
     create_checked_suggestions,
@@ -30,31 +32,49 @@ from src.tui.screens.session_modal import SessionModal
 
 class VideoTab(TabPane):
     def __init__(self):
-        super().__init__("🎬 Video", id="tab-video")
+        super().__init__(t("video.tab_title"), id="tab-video")
         self._selected_session_id: int | None = None
         self._suggestions: list[dict] = []
         self._verdicts: list[DedupVerdict] = []
         self._sessions_cache: dict[int, tuple] = {}
 
     def compose(self) -> ComposeResult:
-        yield Label("URL de YouTube o archivo local:")
+        yield Label(t("video.url_label"), id="lbl-video-url")
         with Horizontal():
             yield Input(placeholder="https://youtube.com/watch?v=...", id="video-url")
-            yield Button("▶ Procesar", id="btn-process-video", variant="primary")
+            yield Button(t("video.process_button"), id="btn-process-video", variant="primary")
         yield ProgressBar(id="video-progress", total=100, show_eta=False)
         yield Label("", id="video-status")
-        yield Label("Sesiones procesadas (Enter para ver opciones):", id="lbl-sessions")
+        yield Label(t("video.sessions_label"), id="lbl-sessions")
         yield DataTable(id="sessions-table")
-        yield Label("Sugerencias de categorías:", id="lbl-suggestions")
+        yield Label(t("video.suggestions_label"), id="lbl-suggestions")
         yield SelectionList(id="suggestions-list")
         with Horizontal():
             yield Button(
-                "Agregar seleccionadas",
+                t("video.add_selected_button"),
                 id="btn-add-suggestion",
                 variant="success",
                 disabled=True,
             )
         yield Label("", id="suggestion-feedback")
+
+    def retranslate(self) -> None:
+        """Re-apply t() to static chrome and DataTable column headers (the
+        table has to be cleared+rebuilt to relabel columns — no lighter API
+        for that in this Textual version — then repopulated from DB, same
+        as refresh_data()/on_mount()). Doesn't touch session row data
+        (DB content) or the feedback/suggestions lines (result state)."""
+        self.query_one("#lbl-video-url", Label).update(t("video.url_label"))
+        self.query_one("#btn-process-video", Button).label = t("video.process_button")
+        self.query_one("#lbl-sessions", Label).update(t("video.sessions_label"))
+        self.query_one("#lbl-suggestions", Label).update(t("video.suggestions_label"))
+        self.query_one("#btn-add-suggestion", Button).label = t("video.add_selected_button")
+        table = self.query_one("#sessions-table", DataTable)
+        table.clear(columns=True)
+        self._setup_table()
+        self._refresh_sessions()
+        tab = self.app.query_one(TabbedContent).get_tab("tab-video")
+        tab.label = t("video.tab_title")
 
     def on_mount(self) -> None:
         self._setup_table()
@@ -63,7 +83,13 @@ class VideoTab(TabPane):
     def _setup_table(self) -> None:
         table = self.query_one("#sessions-table", DataTable)
         table.cursor_type = "row"
-        table.add_columns("ID", "Título", "Estado", "Fecha", "Segmentos")
+        table.add_columns(
+            t("video.column_id"),
+            t("video.column_title"),
+            t("video.column_status"),
+            t("video.column_date"),
+            t("video.column_segments"),
+        )
 
     def _refresh_sessions(self) -> None:
         self._sessions_cache = {}
@@ -137,7 +163,7 @@ class VideoTab(TabPane):
         status_lbl = self.query_one("#video-status", Label)
         btn = self.query_one("#btn-process-video", Button)
         btn.disabled = True
-        btn.label = "⏳ Procesando..."
+        btn.label = t("video.processing_button")
 
         def on_progress(msg: str, pct: float):
             # callback desde el thread del executor — actualizamos via call_from_thread
@@ -150,12 +176,12 @@ class VideoTab(TabPane):
             await loop.run_in_executor(
                 None, lambda: run_pipeline(url, model_size, on_progress)
             )
-            status_lbl.update("[green]✓ Procesado correctamente[/green]")
+            status_lbl.update(f"[green]{t('video.processed_ok')}[/green]")
         except Exception as e:
-            status_lbl.update(f"[red]Error: {e}[/red]")
+            status_lbl.update(f"[red]{t('video.process_error', error=e)}[/red]")
         finally:
             btn.disabled = False
-            btn.label = "▶ Procesar"
+            btn.label = t("video.process_button")
             self._refresh_sessions()
 
     async def _analyze_others(self, session_id: int) -> None:
@@ -164,7 +190,7 @@ class VideoTab(TabPane):
         fb = self.query_one("#suggestion-feedback", Label)
         sel = self.query_one("#suggestions-list", SelectionList)
         btn_add = self.query_one("#btn-add-suggestion", Button)
-        fb.update("Analizando segmentos 'Otros'...")
+        fb.update(t("video.analyzing_otros"))
 
         try:
             categories = db.get_categories()
@@ -174,7 +200,7 @@ class VideoTab(TabPane):
             )
 
             if not segments:
-                fb.update("[yellow]No hay segmentos 'Otros' en esta sesión.[/yellow]")
+                fb.update(f"[yellow]{t('video.no_otros_segments')}[/yellow]")
                 return
 
             loop = asyncio.get_running_loop()
@@ -194,12 +220,12 @@ class VideoTab(TabPane):
                     sel.add_option((verdict_label(v), i))
                 btn_add.disabled = False
                 fb.update(
-                    f"[green]{len(verdicts)} sugerencia(s). Marcá las que querés agregar.[/green]"
+                    f"[green]{t('video.suggestions_found', count=len(verdicts))}[/green]"
                 )
             else:
-                fb.update("[yellow]No se encontraron patrones recurrentes.[/yellow]")
+                fb.update(f"[yellow]{t('video.no_patterns_found')}[/yellow]")
         except Exception as e:
-            fb.update(f"[red]Error al analizar: {e}[/red]")
+            fb.update(f"[red]{t('video.analyze_error', error=e)}[/red]")
 
     async def _add_selected_suggestions(self) -> None:
         sel = self.query_one("#suggestions-list", SelectionList)
@@ -207,7 +233,7 @@ class VideoTab(TabPane):
         selected_indices = sel.selected
         if not selected_indices:
             fb.update(
-                "[yellow]Marcá al menos una sugerencia antes de agregar.[/yellow]"
+                f"[yellow]{t('video.pick_suggestion_first')}[/yellow]"
             )
             return
 
@@ -222,17 +248,17 @@ class VideoTab(TabPane):
         self._suggestions = [v.suggestion for v in remaining]
         sel.clear_options()
         for i, v in enumerate(remaining):
-            sel.add_option((_verdict_label(v), i))
+            sel.add_option((verdict_label(v), i))
         if not remaining:
             self.query_one("#btn-add-suggestion", Button).disabled = True
 
         parts = []
         if added:
-            parts.append(f"Agregadas: {', '.join(added)}.")
+            parts.append(t("video.added_summary", names=", ".join(added)))
         if forced:
-            parts.append(f"Forzadas pese a duplicado: {', '.join(forced)}.")
+            parts.append(t("video.forced_summary", names=", ".join(forced)))
         if skipped:
-            parts.append(f"Omitidas (nombre ya existe): {', '.join(skipped)}.")
+            parts.append(t("video.skipped_summary", names=", ".join(skipped)))
         self.post_message(CategoriesChanged())
 
         session_id = self._selected_session_id
@@ -240,8 +266,9 @@ class VideoTab(TabPane):
             fb.update(f"[green]{' '.join(parts)}[/green]" if parts else "")
             return
 
-        fb.update(f"[green]{' '.join(parts)}[/green] Reclasificando 'Otros'...")
+        fb.update(f"[green]{' '.join(parts)}[/green] {t('video.reclassifying_otros_suffix')}")
         moved = await reclassify_otros(session_id)
         fb.update(
-            f"[green]{' '.join(parts)} {moved} segmento(s) reclasificado(s) desde 'Otro'.[/green]"
+            f"[green]{' '.join(parts)} "
+            f"{t('video.reclassified_otros_summary', count=moved)}[/green]"
         )

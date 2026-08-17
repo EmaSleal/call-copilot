@@ -11,6 +11,7 @@ from textual.screen import ModalScreen
 from textual.widgets import Button, Label, Select, Static
 
 import src.db.database as db
+from src.i18n import t
 
 
 def _update_fragment_category(source: str, fragment_id: int, category_id: int) -> None:
@@ -44,7 +45,9 @@ class FragmentEditModal(ModalScreen):
     #fragment-feedback { margin-top: 1; }
     """
 
-    BINDINGS = [("escape", "close", "Cerrar")]
+    # Footer hint, same restart-required exception as UnifiedApp.BINDINGS
+    # in src/tui/app.py — resolved once at import time.
+    BINDINGS = [("escape", "close", t("fragment_edit.close_binding"))]
 
     def __init__(self, source: str, fragment_id: int, text: str, category_id: int | None) -> None:
         super().__init__()
@@ -60,14 +63,22 @@ class FragmentEditModal(ModalScreen):
     def compose(self) -> ComposeResult:
         with Vertical(id="fragment-dialog"):
             with Horizontal(id="fragment-header"):
-                yield Label("Editar categoría del fragmento", id="fragment-title")
-                yield Button("✕ Cerrar", id="btn-fragment-close", variant="default")
+                yield Label(t("fragment_edit.title"), id="fragment-title")
+                yield Button(t("fragment_edit.close_button"), id="btn-fragment-close", variant="default")
             yield Static(self._text, id="fragment-text")
-            yield Label("Categoría:")
+            yield Label(t("fragment_edit.category_label"), id="lbl-fragment-category")
             yield Select([], id="fragment-category-select", allow_blank=True)
             with Horizontal(id="fragment-actions"):
-                yield Button("Guardar", id="btn-fragment-save", variant="primary")
+                yield Button(t("fragment_edit.save_button"), id="btn-fragment-save", variant="primary")
             yield Label("", id="fragment-feedback")
+
+    def retranslate(self) -> None:
+        """Re-apply t() to static chrome — not the fragment text (user
+        data) or the feedback line (result state)."""
+        self.query_one("#fragment-title", Label).update(t("fragment_edit.title"))
+        self.query_one("#btn-fragment-close", Button).label = t("fragment_edit.close_button")
+        self.query_one("#lbl-fragment-category", Label).update(t("fragment_edit.category_label"))
+        self.query_one("#btn-fragment-save", Button).label = t("fragment_edit.save_button")
 
     def on_mount(self) -> None:
         select = self.query_one("#fragment-category-select", Select)
@@ -86,13 +97,13 @@ class FragmentEditModal(ModalScreen):
         select = self.query_one("#fragment-category-select", Select)
         fb = self.query_one("#fragment-feedback", Label)
         if select.is_blank():
-            fb.update("[yellow]Elegí una categoría.[/yellow]")
+            fb.update(f"[yellow]{t('fragment_edit.pick_category')}[/yellow]")
             return
         new_category_id = int(select.value)
         if new_category_id == self._category_id:
-            fb.update("[dim]Sin cambios.[/dim]")
+            fb.update(f"[dim]{t('fragment_edit.no_changes')}[/dim]")
             return
         _update_fragment_category(self._source, self._fragment_id, new_category_id)
         self._category_id = new_category_id
         self._changed = True
-        fb.update("[green]Guardado.[/green]")
+        fb.update(f"[green]{t('fragment_edit.saved_feedback')}[/green]")

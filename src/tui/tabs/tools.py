@@ -2,9 +2,10 @@
 
 from textual.app import ComposeResult
 from textual.containers import Horizontal
-from textual.widgets import Button, DataTable, Input, Label, TabPane
+from textual.widgets import Button, DataTable, Input, Label, TabbedContent, TabPane
 
 from src.db.database import Tool, get_tools
+from src.i18n import t
 from src.processing.tool_extractor import search_tools
 
 
@@ -25,19 +26,36 @@ class ToolsTab(TabPane):
     """
 
     def __init__(self):
-        super().__init__("🛠 Tools", id="tab-tools")
+        super().__init__(t("tools.tab_title"), id="tab-tools")
 
     def compose(self) -> ComposeResult:
         with Horizontal():
-            yield Input(placeholder="Buscar tecnología...", id="tools-query")
-            yield Button("Buscar", id="btn-tools-search", variant="primary")
-            yield Button("Ver todas", id="btn-tools-list-all", variant="default")
+            yield Input(placeholder=t("tools.search_placeholder"), id="tools-query")
+            yield Button(t("tools.search_button"), id="btn-tools-search", variant="primary")
+            yield Button(t("tools.list_all_button"), id="btn-tools-list-all", variant="default")
         yield DataTable(id="tools-results")
         yield Label("", id="tools-status")
 
+    def retranslate(self) -> None:
+        """Re-apply t() to static chrome and rebuild the DataTable's
+        columns (clear+re-add is the only way to relabel them, then
+        repopulate — mirrors video.py's retranslate()). Doesn't touch the
+        typed search query or the status line (result state)."""
+        query_input = self.query_one("#tools-query", Input)
+        if not query_input.value:
+            query_input.placeholder = t("tools.search_placeholder")
+        self.query_one("#btn-tools-search", Button).label = t("tools.search_button")
+        self.query_one("#btn-tools-list-all", Button).label = t("tools.list_all_button")
+        table = self.query_one("#tools-results", DataTable)
+        table.clear(columns=True)
+        table.add_columns(t("tools.column_name"), t("tools.column_category"), t("tools.column_summary"))
+        self._list_all()
+        tab = self.app.query_one(TabbedContent).get_tab("tab-tools")
+        tab.label = t("tools.tab_title")
+
     def on_mount(self) -> None:
         table = self.query_one("#tools-results", DataTable)
-        table.add_columns("Nombre", "Categoría", "Resumen")
+        table.add_columns(t("tools.column_name"), t("tools.column_category"), t("tools.column_summary"))
         self.refresh_data()
 
     def refresh_data(self) -> None:
@@ -52,7 +70,7 @@ class ToolsTab(TabPane):
         tools = get_tools()
         if not tools:
             self.query_one("#tools-status", Label).update(
-                "[dim]Todavía no se detectaron tecnologías.[/dim]"
+                f"[dim]{t('tools.none_detected')}[/dim]"
             )
             return
         self.query_one("#tools-status", Label).update("")
@@ -65,7 +83,7 @@ class ToolsTab(TabPane):
         tools = await search_tools(query)
         if not tools:
             self.query_one("#tools-status", Label).update(
-                f"[dim]Sin resultados para «{query}».[/dim]"
+                f"[dim]{t('tools.no_results', query=query)}[/dim]"
             )
             return
         self.query_one("#tools-status", Label).update("")

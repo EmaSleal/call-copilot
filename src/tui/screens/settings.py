@@ -20,9 +20,9 @@ from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.screen import ModalScreen
 from textual.widgets import Button, Input, Label, Select
 
+import src.i18n as i18n
 from src.core import config_defaults
-
-_MASKED_KEY_PLACEHOLDER = "•••• (configurada)"
+from src.i18n import t
 
 _SETTINGS_KEY_INPUT_IDS = (
     ("OPENAI_API_KEY", "settings-openai-key"),
@@ -35,25 +35,25 @@ def validate_settings_form(values: dict) -> list[str]:
     """
     Validate Settings form values before writing to .env.
 
-    Returns a list of Spanish error messages; an empty list means valid.
-    Only the whisper model sizes are validated here — backends come from a
-    constrained Select and API keys are free text.
+    Returns a list of translated error messages (active i18n language); an
+    empty list means valid. Only the whisper model sizes are validated here
+    — backends come from a constrained Select and API keys are free text.
     """
     errors: list[str] = []
     for key in ("WHISPER_MODEL_CALL", "WHISPER_MODEL_VIDEO"):
         value = values.get(key, "")
         if value and value not in config_defaults.WHISPER_SIZES:
-            errors.append(f"{key}: tamaño de modelo Whisper inválido ('{value}').")
+            errors.append(t("settings.invalid_whisper_size", key=key, value=value))
 
     threshold = values.get("SILENCE_THRESHOLD_MS", "")
     if threshold:
         try:
             threshold_int = int(threshold)
         except ValueError:
-            errors.append(f"SILENCE_THRESHOLD_MS: debe ser un número entero ('{threshold}').")
+            errors.append(t("settings.silence_not_integer", threshold=threshold))
         else:
             if not (100 <= threshold_int <= 5000):
-                errors.append("SILENCE_THRESHOLD_MS: debe estar entre 100 y 5000 ms.")
+                errors.append(t("settings.silence_out_of_range"))
 
     return errors
 
@@ -69,11 +69,11 @@ def diff_changed_keys(original: dict, new: dict) -> dict:
 
 
 def summarize_scopes(changed_keys) -> dict:
-    """Map each changed key to its Spanish restart/next-call/next-video badge text."""
+    """Map each changed key to its translated restart/next-call/next-video badge text."""
     labels = {
-        config_defaults.Scope.RESTART: "requiere reiniciar",
-        config_defaults.Scope.NEXT_CALL: "aplica en la próxima llamada",
-        config_defaults.Scope.NEXT_VIDEO: "aplica en el próximo video",
+        config_defaults.Scope.RESTART: t("settings.scope_restart"),
+        config_defaults.Scope.NEXT_CALL: t("settings.scope_next_call"),
+        config_defaults.Scope.NEXT_VIDEO: t("settings.scope_next_video"),
     }
     return {key: labels[config_defaults.scope_of(key)] for key in changed_keys}
 
@@ -92,8 +92,13 @@ def key_to_provider(env_key: str) -> str | None:
 
 
 def format_sync_feedback(imported: int, skipped: int) -> str:
-    """Feedback text for the 'Sincronizar tech-scout' button."""
-    return f"Sincronizado. {imported} nuevas, {skipped} ya existían."
+    """Feedback text for the 'Sync tech-scout' button."""
+    return t("settings.sync_feedback", imported=imported, skipped=skipped)
+
+
+def key_placeholder(key: str) -> str:
+    """Placeholder for a masked API key Input — reflects whether it's already set."""
+    return t("settings.masked_key_placeholder") if os.getenv(key) else t("settings.key_not_configured")
 
 
 class SettingsScreen(ModalScreen):
@@ -121,7 +126,9 @@ class SettingsScreen(ModalScreen):
     #settings-feedback { margin-top: 1; }
     """
 
-    BINDINGS = [("escape", "close", "Cerrar")]
+    # Footer hint, same restart-required exception as UnifiedApp.BINDINGS
+    # in src/tui/app.py — resolved once at import time.
+    BINDINGS = [("escape", "close", t("settings.close_binding"))]
 
     def __init__(self) -> None:
         super().__init__()
@@ -130,79 +137,114 @@ class SettingsScreen(ModalScreen):
     def action_close(self) -> None:
         self.dismiss(None)
 
-    def _key_placeholder(self, key: str) -> str:
-        return _MASKED_KEY_PLACEHOLDER if os.getenv(key) else "Sin configurar"
-
     def compose(self) -> ComposeResult:
         with Vertical(id="settings-dialog"):
             with Horizontal(id="settings-header"):
-                yield Label("Configuración", id="settings-title")
-                yield Button("✕ Cerrar", id="btn-settings-close", variant="default")
+                yield Label(t("settings.title"), id="settings-title")
+                yield Button(t("settings.close_button"), id="btn-settings-close", variant="default")
             with VerticalScroll(id="settings-body"):
-                yield Label(
-                    "Proveedor LLM (tiempo real) — aplica en la próxima llamada:"
+                yield Label(t("settings.language_label"), id="lbl-settings-language")
+                yield Select(
+                    [("es", "es"), ("en", "en")],
+                    id="settings-language",
+                    value=i18n.get_language(),
                 )
+                yield Label(t("settings.llm_provider_label"), id="lbl-settings-llm-provider")
                 yield Select(
                     [("gpt", "gpt"), ("claude", "claude"), ("ollama", "ollama")],
                     id="settings-llm-backend",
                     value=config_defaults.llm_backend(),
                 )
-                yield Label("Proveedor STT — requiere reiniciar:")
+                yield Label(t("settings.stt_provider_label"), id="lbl-settings-stt-provider")
                 yield Select(
                     [("deepgram", "deepgram"), ("whisper_local", "whisper_local")],
                     id="settings-stt-backend",
                     value=config_defaults.stt_backend(),
                 )
-                yield Label("OpenAI API Key:")
+                yield Label(t("settings.openai_key_label"), id="lbl-settings-openai-key")
                 yield Input(
                     id="settings-openai-key",
                     password=True,
-                    placeholder=self._key_placeholder("OPENAI_API_KEY"),
+                    placeholder=key_placeholder("OPENAI_API_KEY"),
                 )
-                yield Label("Anthropic API Key:")
+                yield Label(t("settings.anthropic_key_label"), id="lbl-settings-anthropic-key")
                 yield Input(
                     id="settings-anthropic-key",
                     password=True,
-                    placeholder=self._key_placeholder("ANTHROPIC_API_KEY"),
+                    placeholder=key_placeholder("ANTHROPIC_API_KEY"),
                 )
-                yield Label("Deepgram API Key:")
+                yield Label(t("settings.deepgram_key_label"), id="lbl-settings-deepgram-key")
                 yield Input(
                     id="settings-deepgram-key",
                     password=True,
-                    placeholder=self._key_placeholder("DEEPGRAM_API_KEY"),
+                    placeholder=key_placeholder("DEEPGRAM_API_KEY"),
                 )
-                yield Label("Whisper — modelo para llamadas — requiere reiniciar:")
+                yield Label(t("settings.whisper_call_label"), id="lbl-settings-whisper-call")
                 yield Select(
                     [(size, size) for size in config_defaults.WHISPER_SIZES],
                     id="settings-whisper-call",
                     value=config_defaults.whisper_model_call(),
                 )
-                yield Label("Whisper — modelo para video — aplica en el próximo video:")
+                yield Label(t("settings.whisper_video_label"), id="lbl-settings-whisper-video")
                 yield Select(
                     [(size, size) for size in config_defaults.WHISPER_SIZES],
                     id="settings-whisper-video",
                     value=config_defaults.whisper_model_video(),
                 )
                 yield Label(
-                    "Silencio para fin de turno (ms, 100-5000) — requiere reiniciar:"
+                    t("settings.silence_threshold_label"), id="lbl-settings-silence-threshold"
                 )
                 yield Input(
                     id="settings-silence-threshold",
                     value=str(config_defaults.silence_threshold_ms()),
                 )
-                yield Button("Guardar", id="btn-settings-save", variant="primary")
-                yield Label("Tech Scout — ruta a tools.db:")
+                yield Button(t("settings.save_button"), id="btn-settings-save", variant="primary")
+                yield Label(t("settings.tech_scout_path_label"), id="lbl-settings-tech-scout-path")
                 yield Input(
                     id="settings-tech-scout-path",
                     value=config_defaults.tech_scout_db_path(),
                 )
                 yield Button(
-                    "Sincronizar tech-scout", id="btn-settings-sync-tools", variant="default"
+                    t("settings.sync_tech_scout_button"),
+                    id="btn-settings-sync-tools",
+                    variant="default",
                 )
             yield Label("", id="settings-feedback")
 
+    def retranslate(self) -> None:
+        """
+        Re-apply t() to every static label/button (not the API key Inputs'
+        typed values, not the live feedback line — those hold user/result
+        state, not translated chrome). Called by App.retranslate_all() right
+        after a language change, so this screen updates live without a
+        recompose (see i18n-hot-swap-tui design).
+        """
+        self.query_one("#settings-title", Label).update(t("settings.title"))
+        self.query_one("#btn-settings-close", Button).label = t("settings.close_button")
+        self.query_one("#lbl-settings-language", Label).update(t("settings.language_label"))
+        self.query_one("#lbl-settings-llm-provider", Label).update(t("settings.llm_provider_label"))
+        self.query_one("#lbl-settings-stt-provider", Label).update(t("settings.stt_provider_label"))
+        self.query_one("#lbl-settings-openai-key", Label).update(t("settings.openai_key_label"))
+        self.query_one("#lbl-settings-anthropic-key", Label).update(t("settings.anthropic_key_label"))
+        self.query_one("#lbl-settings-deepgram-key", Label).update(t("settings.deepgram_key_label"))
+        self.query_one("#lbl-settings-whisper-call", Label).update(t("settings.whisper_call_label"))
+        self.query_one("#lbl-settings-whisper-video", Label).update(t("settings.whisper_video_label"))
+        self.query_one("#lbl-settings-silence-threshold", Label).update(
+            t("settings.silence_threshold_label")
+        )
+        self.query_one("#btn-settings-save", Button).label = t("settings.save_button")
+        self.query_one("#lbl-settings-tech-scout-path", Label).update(
+            t("settings.tech_scout_path_label")
+        )
+        self.query_one("#btn-settings-sync-tools", Button).label = t("settings.sync_tech_scout_button")
+        for env_key, input_id in _SETTINGS_KEY_INPUT_IDS:
+            key_input = self.query_one(f"#{input_id}", Input)
+            if not key_input.value:
+                key_input.placeholder = key_placeholder(env_key)
+
     def on_mount(self) -> None:
         self._original = {
+            "LANGUAGE": i18n.get_language(),
             "LLM_BACKEND": config_defaults.llm_backend(),
             "STT_BACKEND": config_defaults.stt_backend(),
             "WHISPER_MODEL_CALL": config_defaults.whisper_model_call(),
@@ -223,6 +265,7 @@ class SettingsScreen(ModalScreen):
 
         fb = self.query_one("#settings-feedback", Label)
         new_values = {
+            "LANGUAGE": str(self.query_one("#settings-language", Select).value),
             "LLM_BACKEND": str(self.query_one("#settings-llm-backend", Select).value),
             "STT_BACKEND": str(self.query_one("#settings-stt-backend", Select).value),
             "WHISPER_MODEL_CALL": str(
@@ -248,7 +291,7 @@ class SettingsScreen(ModalScreen):
                 changed[key] = typed
 
         if not changed:
-            fb.update("[dim]Sin cambios.[/dim]")
+            fb.update(f"[dim]{t('settings.no_changes')}[/dim]")
             return
 
         try:
@@ -256,7 +299,7 @@ class SettingsScreen(ModalScreen):
         except OSError:
             # Never interpolate the exception into the message — it could
             # theoretically echo path/context, and changed may hold key values.
-            fb.update("[red]No se pudo guardar la configuración.[/red]")
+            fb.update(f"[red]{t('settings.save_failed')}[/red]")
             return
 
         from src.llm import model_catalog
@@ -270,12 +313,22 @@ class SettingsScreen(ModalScreen):
             if key in changed:
                 key_input = self.query_one(f"#{input_id}", Input)
                 key_input.value = ""
-                key_input.placeholder = _MASKED_KEY_PLACEHOLDER
+                key_input.placeholder = t("settings.masked_key_placeholder")
 
         self._original.update(changed)
-        badges = summarize_scopes(changed.keys())
+
+        if "LANGUAGE" in changed:
+            # Applied immediately via retranslate_all(), not through the
+            # RESTART/NEXT_CALL/NEXT_VIDEO Scope model below — hot-swap, no
+            # badge needed. Must happen before summarize_scopes()/t() calls
+            # further down so the rest of this feedback line lands in the
+            # newly active language too.
+            i18n.set_language(changed["LANGUAGE"])
+            self.app.retranslate_all()
+
+        badges = summarize_scopes(key for key in changed if key != "LANGUAGE")
         summary = "; ".join(f"{k}: {v}" for k, v in badges.items())
-        fb.update(f"[green]Guardado.[/green] {summary}")
+        fb.update(f"[green]{t('settings.saved_prefix')}[/green] {summary}")
 
     def _sync_tech_scout(self) -> None:
         from src.core import env_store
@@ -284,7 +337,7 @@ class SettingsScreen(ModalScreen):
         fb = self.query_one("#settings-feedback", Label)
         path = self.query_one("#settings-tech-scout-path", Input).value.strip()
         if not path:
-            fb.update("[red]Ruta vacía.[/red]")
+            fb.update(f"[red]{t('settings.empty_path')}[/red]")
             return
 
         try:
@@ -292,7 +345,7 @@ class SettingsScreen(ModalScreen):
         except (OSError, sqlite3.Error):
             # Never interpolate the exception into the message — same
             # rationale as _save()'s OSError handling.
-            fb.update("[red]No se pudo sincronizar con tech-scout.[/red]")
+            fb.update(f"[red]{t('settings.sync_failed')}[/red]")
             return
 
         try:

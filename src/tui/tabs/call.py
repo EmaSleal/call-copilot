@@ -7,9 +7,10 @@ from datetime import datetime
 
 from textual.app import ComposeResult
 from textual.containers import Horizontal, VerticalScroll
-from textual.widgets import Button, Input, Label, RichLog, Select, Static, TabPane
+from textual.widgets import Button, Input, Label, RichLog, Select, Static, TabbedContent, TabPane
 
 from src.tui import bootstrap
+from src.i18n import t
 from src.processing.session_processor import process
 from src.profiles.store import ProfileStore
 from src.profiles.models import CallProfile
@@ -35,7 +36,7 @@ def build_audio_sink_options() -> list[tuple[str, str]]:
     from src.audio.pulse_source import list_sinks, sink_label
     from src.audio.wasapi_source import device_label, list_output_devices
 
-    options = [("Default (dispositivo del sistema)", "")]
+    options = [(t("call.audio_sink_default"), "")]
     options.extend((sink_label(s), s.name) for s in list_sinks())
     options.extend((device_label(d), str(d.index)) for d in list_output_devices())
     return options
@@ -51,7 +52,7 @@ def _should_trigger_processing(session_id) -> bool:
 
 class CallCopilotTab(TabPane):
     def __init__(self):
-        super().__init__("📞 Call Copilot", id="tab-call")
+        super().__init__(t("call.tab_title"), id="tab-call")
         self._pipeline = None
         self._pipeline_task = None
         # Profile state — loaded once at tab construction; refreshed after ProfileManagerScreen.
@@ -68,23 +69,21 @@ class CallCopilotTab(TabPane):
         # own, so without this wrapper the layout overflows into visually
         # overlapping widgets instead of just scrolling.
         with VerticalScroll():
-            yield Label("Título de la sesión (opcional):")
-            yield Input(placeholder="Título de la sesión (opcional)", id="session_title")
-            yield Label("Contexto de la llamada (opcional):")
+            yield Label(t("call.session_title_label"), id="lbl-session-title")
+            yield Input(placeholder=t("call.session_title_placeholder"), id="session_title")
+            yield Label(t("call.context_label"), id="lbl-call-context")
             yield Input(
-                placeholder="Ej: reunión de ventas con cliente enterprise",
+                placeholder=t("call.context_placeholder"),
                 id="call-context",
             )
-            yield Label("Perfil activo:")
+            yield Label(t("call.profile_label"), id="lbl-profile")
             profile_options = [(p.name, p.id) for p in self._profile_store.list()]
             yield Select(
                 options=profile_options,
                 value=self._active_profile.id,
                 id="profile-select",
             )
-            yield Label(
-                "Salida de audio a capturar (qué sale por la corneta/auriculares):"
-            )
+            yield Label(t("call.audio_sink_label"), id="lbl-audio-sink")
             with Horizontal(id="audio-sink-row"):
                 yield Select(
                     options=build_audio_sink_options(),
@@ -93,19 +92,47 @@ class CallCopilotTab(TabPane):
                 )
                 yield Button("↻", id="btn-refresh-sinks", variant="default")
             with Horizontal(id="call-buttons"):
-                yield Button("▶ Iniciar", id="btn-start-call", variant="success")
+                yield Button(t("call.start_button"), id="btn-start-call", variant="success")
                 yield Button(
-                    "⏹ Detener", id="btn-stop-call", variant="error", disabled=True
+                    t("call.stop_button"), id="btn-stop-call", variant="error", disabled=True
                 )
                 yield Button(
-                    "Gestionar perfiles", id="btn-manage-profiles", variant="default"
+                    t("call.manage_profiles_button"), id="btn-manage-profiles", variant="default"
                 )
-                yield Button("⚙ Configuración", id="btn-settings", variant="default")
-            yield Label("Transcripción en vivo:", id="lbl-transcript")
+                yield Button(t("call.settings_button"), id="btn-settings", variant="default")
+            yield Label(t("call.transcript_label"), id="lbl-transcript")
             yield RichLog(id="transcript-log", highlight=True, markup=True, wrap=True)
-            yield Label("Sugerencia del copiloto:", id="lbl-suggestion")
+            yield Label(t("call.suggestion_label"), id="lbl-suggestion")
             yield Static("", id="suggestion-live")
             yield RichLog(id="suggestion-log", highlight=True, markup=True, wrap=True)
+
+    def retranslate(self) -> None:
+        """
+        Re-apply t() to this tab's static chrome — not the transcript/
+        suggestion RichLogs (live call data) and not the typed session
+        title/context Inputs (user data). The tab's own title (shown in the
+        TabbedContent tab bar) is re-set via TabbedContent.get_tab(), since
+        that text lives on the associated Tab widget, not on this TabPane.
+        """
+        self.query_one("#lbl-session-title", Label).update(t("call.session_title_label"))
+        session_title = self.query_one("#session_title", Input)
+        if not session_title.value:
+            session_title.placeholder = t("call.session_title_placeholder")
+        self.query_one("#lbl-call-context", Label).update(t("call.context_label"))
+        call_context = self.query_one("#call-context", Input)
+        if not call_context.value:
+            call_context.placeholder = t("call.context_placeholder")
+        self.query_one("#lbl-profile", Label).update(t("call.profile_label"))
+        self.query_one("#lbl-audio-sink", Label).update(t("call.audio_sink_label"))
+        self.query_one("#audio-sink-select", Select).set_options(build_audio_sink_options())
+        self.query_one("#btn-start-call", Button).label = t("call.start_button")
+        self.query_one("#btn-stop-call", Button).label = t("call.stop_button")
+        self.query_one("#btn-manage-profiles", Button).label = t("call.manage_profiles_button")
+        self.query_one("#btn-settings", Button).label = t("call.settings_button")
+        self.query_one("#lbl-transcript", Label).update(t("call.transcript_label"))
+        self.query_one("#lbl-suggestion", Label).update(t("call.suggestion_label"))
+        tab = self.app.query_one(TabbedContent).get_tab("tab-call")
+        tab.label = t("call.tab_title")
 
     def on_select_changed(self, event: Select.Changed) -> None:
         """Update active profile / audio sink when the user picks a different option."""
@@ -208,7 +235,7 @@ class CallCopilotTab(TabPane):
             _log.info("STT built: %s", type(stt).__name__)
         except Exception as e:
             _log.exception("_build_stt failed")
-            suggestion_log.write(f"[red]Error cargando STT: {e}[/red]")
+            suggestion_log.write(f"[red]{t('call.stt_error', error=e)}[/red]")
             return
 
         try:
@@ -216,7 +243,7 @@ class CallCopilotTab(TabPane):
             _log.info("LLM built: %s", type(llm).__name__)
         except Exception as e:
             _log.exception("_build_llm failed")
-            suggestion_log.write(f"[red]Error cargando LLM: {e}[/red]")
+            suggestion_log.write(f"[red]{t('call.llm_error', error=e)}[/red]")
             return
 
         output = TUIOutput()
@@ -272,6 +299,6 @@ class CallCopilotTab(TabPane):
         except asyncio.CancelledError:
             pass
         except Exception as e:
-            suggestion_log.write(f"[red]Error en pipeline: {e}[/red]")
+            suggestion_log.write(f"[red]{t('call.pipeline_error', error=e)}[/red]")
         finally:
             await self._pipeline.stop()

@@ -14,7 +14,7 @@ from src.audio.wasapi_source import DeviceInfo
 
 
 class TestBuildAudioSinkOptions:
-    def test_always_includes_default_option_first(self):
+    def test_always_includes_default_option_first(self, spanish):
         from src.tui.tabs.call import build_audio_sink_options
         with (
             patch("src.audio.pulse_source.list_sinks", return_value=[]),
@@ -22,6 +22,15 @@ class TestBuildAudioSinkOptions:
         ):
             options = build_audio_sink_options()
         assert options[0] == ("Default (dispositivo del sistema)", "")
+
+    def test_default_option_label_in_english(self, english):
+        from src.tui.tabs.call import build_audio_sink_options
+        with (
+            patch("src.audio.pulse_source.list_sinks", return_value=[]),
+            patch("src.audio.wasapi_source.list_output_devices", return_value=[]),
+        ):
+            options = build_audio_sink_options()
+        assert options[0] == ("Default (system device)", "")
 
     def test_default_option_value_is_empty_string(self):
         """Empty string means 'no override' — PulseLoopbackSource(device=None)

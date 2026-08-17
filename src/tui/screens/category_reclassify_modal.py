@@ -15,6 +15,7 @@ from textual.screen import ModalScreen
 from textual.widgets import Button, Label, Select, SelectionList
 
 import src.db.database as db
+from src.i18n import t
 from src.processing.category_dedup import (
     DedupVerdict,
     create_checked_suggestions,
@@ -52,7 +53,9 @@ class CategoryReclassifyModal(ModalScreen):
     #reclassify-feedback { margin-top: 1; }
     """
 
-    BINDINGS = [("escape", "close", "Cerrar")]
+    # Footer hint, same restart-required exception as UnifiedApp.BINDINGS
+    # in src/tui/app.py — resolved once at import time.
+    BINDINGS = [("escape", "close", t("category_reclassify.close_binding"))]
 
     def __init__(self) -> None:
         super().__init__()
@@ -67,18 +70,27 @@ class CategoryReclassifyModal(ModalScreen):
     def compose(self) -> ComposeResult:
         with Vertical(id="reclassify-dialog"):
             with Horizontal(id="reclassify-header"):
-                yield Label("Reclasificar categoría (global, todas las sesiones)", id="reclassify-title")
-                yield Button("✕ Cerrar", id="btn-reclassify-close", variant="default")
+                yield Label(t("category_reclassify.title"), id="reclassify-title")
+                yield Button(t("category_reclassify.close_button"), id="btn-reclassify-close", variant="default")
             with Horizontal():
                 yield Select([], id="reclassify-category-select", allow_blank=True)
-                yield Button("Analizar", id="btn-reclassify-analyze", variant="primary")
+                yield Button(t("category_reclassify.analyze_button"), id="btn-reclassify-analyze", variant="primary")
             yield SelectionList(id="reclassify-suggestions")
             with Horizontal():
                 yield Button(
-                    "Agregar seleccionadas", id="btn-reclassify-add",
+                    t("category_reclassify.add_selected_button"), id="btn-reclassify-add",
                     variant="success", disabled=True,
                 )
             yield Label("", id="reclassify-feedback")
+
+    def retranslate(self) -> None:
+        """Re-apply t() to static chrome — not the feedback line (result
+        state) and not the suggestions SelectionList (built from live
+        DB-derived category names, retranslated the next time it's built)."""
+        self.query_one("#reclassify-title", Label).update(t("category_reclassify.title"))
+        self.query_one("#btn-reclassify-close", Button).label = t("category_reclassify.close_button")
+        self.query_one("#btn-reclassify-analyze", Button).label = t("category_reclassify.analyze_button")
+        self.query_one("#btn-reclassify-add", Button).label = t("category_reclassify.add_selected_button")
 
     def on_mount(self) -> None:
         self._refresh_category_select()
@@ -97,7 +109,7 @@ class CategoryReclassifyModal(ModalScreen):
                 await self._analyze_category(int(select.value))
             else:
                 self.query_one("#reclassify-feedback", Label).update(
-                    "[yellow]Elegí una categoría antes de analizar.[/yellow]"
+                    f"[yellow]{t('category_reclassify.pick_category_first')}[/yellow]"
                 )
         elif event.button.id == "btn-reclassify-add":
             await self._add_selected_suggestions()
@@ -108,7 +120,7 @@ class CategoryReclassifyModal(ModalScreen):
         fb = self.query_one("#reclassify-feedback", Label)
         sel = self.query_one("#reclassify-suggestions", SelectionList)
         btn_add = self.query_one("#btn-reclassify-add", Button)
-        fb.update("Analizando...")
+        fb.update(t("category_reclassify.analyzing"))
 
         try:
             categories = db.get_categories()
@@ -117,7 +129,7 @@ class CategoryReclassifyModal(ModalScreen):
             all_texts = [s.text for s in video_segments] + [s.text for s in call_segments]
 
             if not all_texts:
-                fb.update("[yellow]No hay fragmentos en esa categoría.[/yellow]")
+                fb.update(f"[yellow]{t('category_reclassify.no_fragments')}[/yellow]")
                 return
 
             loop = asyncio.get_running_loop()
@@ -137,20 +149,19 @@ class CategoryReclassifyModal(ModalScreen):
                     sel.add_option((verdict_label(v), i))
                 btn_add.disabled = False
                 fb.update(
-                    f"[green]{len(verdicts)} sugerencia(s) de {len(all_texts)} fragmentos."
-                    f" Marcá las que querés agregar.[/green]"
+                    f"[green]{t('category_reclassify.suggestions_found', count=len(verdicts), total=len(all_texts))}[/green]"
                 )
             else:
-                fb.update("[yellow]No se encontraron patrones recurrentes.[/yellow]")
+                fb.update(f"[yellow]{t('category_reclassify.no_patterns_found')}[/yellow]")
         except Exception as e:
-            fb.update(f"[red]Error al analizar: {e}[/red]")
+            fb.update(f"[red]{t('category_reclassify.analyze_error', error=e)}[/red]")
 
     async def _add_selected_suggestions(self) -> None:
         sel = self.query_one("#reclassify-suggestions", SelectionList)
         fb = self.query_one("#reclassify-feedback", Label)
         selected_indices = sel.selected
         if not selected_indices:
-            fb.update("[yellow]Marcá al menos una sugerencia antes de agregar.[/yellow]")
+            fb.update(f"[yellow]{t('category_reclassify.pick_suggestion_first')}[/yellow]")
             return
 
         added, forced, skipped = await create_checked_suggestions(
@@ -164,17 +175,17 @@ class CategoryReclassifyModal(ModalScreen):
         self._suggestions = [v.suggestion for v in remaining]
         sel.clear_options()
         for i, v in enumerate(remaining):
-            sel.add_option((_verdict_label(v), i))
+            sel.add_option((verdict_label(v), i))
         if not remaining:
             self.query_one("#btn-reclassify-add", Button).disabled = True
 
         parts = []
         if added:
-            parts.append(f"Agregadas: {', '.join(added)}.")
+            parts.append(t("category_reclassify.added_summary", names=", ".join(added)))
         if forced:
-            parts.append(f"Forzadas pese a duplicado: {', '.join(forced)}.")
+            parts.append(t("category_reclassify.forced_summary", names=", ".join(forced)))
         if skipped:
-            parts.append(f"Omitidas (nombre ya existe): {', '.join(skipped)}.")
+            parts.append(t("category_reclassify.skipped_summary", names=", ".join(skipped)))
         self.post_message(CategoriesChanged())
         self._refresh_category_select()
         self._changed = True
@@ -184,6 +195,9 @@ class CategoryReclassifyModal(ModalScreen):
             fb.update(f"[green]{' '.join(parts)}[/green]" if parts else "")
             return
 
-        fb.update(f"[green]{' '.join(parts)}[/green] Reclasificando...")
+        fb.update(f"[green]{' '.join(parts)}[/green] {t('category_reclassify.reclassifying_suffix')}")
         moved = await reclassify_category(target_cat_id)
-        fb.update(f"[green]{' '.join(parts)} {moved} fragmento(s) reclasificado(s).[/green]")
+        fb.update(
+            f"[green]{' '.join(parts)} "
+            f"{t('category_reclassify.reclassified_summary', count=moved)}[/green]"
+        )

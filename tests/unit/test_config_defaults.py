@@ -10,6 +10,7 @@ monkeypatch.setenv/delenv for isolation between tests.
 import pytest
 
 from src.core.config_defaults import (
+    DEFAULT_LANGUAGE,
     DEFAULT_LLM_BACKEND,
     DEFAULT_STT_BACKEND,
     DEFAULT_WHISPER_MODEL_CALL,
@@ -18,6 +19,7 @@ from src.core.config_defaults import (
     WHISPER_SIZES,
     RESTART_KEYS,
     Scope,
+    language,
     llm_backend,
     stt_backend,
     whisper_model_call,
@@ -162,6 +164,21 @@ class TestScopeOf:
         assert RESTART_KEYS == {"STT_BACKEND", "WHISPER_MODEL_CALL", "SILENCE_THRESHOLD_MS"}
         for key in RESTART_KEYS:
             assert scope_of(key) == Scope.RESTART
+
+
+class TestLanguage:
+    def test_defaults_to_en_when_unset(self, monkeypatch):
+        monkeypatch.delenv("LANGUAGE", raising=False)
+        assert language() == "en"
+        assert DEFAULT_LANGUAGE == "en"
+
+    def test_empty_string_counts_as_unset(self, monkeypatch):
+        monkeypatch.setenv("LANGUAGE", "")
+        assert language() == DEFAULT_LANGUAGE
+
+    def test_honors_explicit_value(self, monkeypatch):
+        monkeypatch.setenv("LANGUAGE", "es")
+        assert language() == "es"
 
 
 class TestTechScoutDbPath:

@@ -10,6 +10,7 @@ from textual.screen import ModalScreen
 from textual.widgets import Button, DataTable, Input, Label, Select
 
 from src.core import config_defaults
+from src.i18n import t
 from src.profiles.models import ResponseMode
 from src.profiles.store import ProfileStore
 
@@ -28,7 +29,7 @@ def build_model_select_options(active_backend: str) -> list[tuple[str, str]]:
     models = model_catalog.list_models(active_backend)
     options = [(m.label, m.id) for m in models]
     if not any(model_id == "" for _, model_id in options):
-        options.append(("Default — selección automática por contexto", ""))
+        options.append((t("profile_manager.default_model_option"), ""))
     return options
 
 
@@ -64,7 +65,9 @@ class ProfileManagerScreen(ModalScreen):
         self._store = store
         self._selected_id: str | None = None
 
-    BINDINGS = [("escape", "close", "Cerrar")]
+    # Footer hint, same restart-required exception as UnifiedApp.BINDINGS
+    # in src/tui/app.py — resolved once at import time.
+    BINDINGS = [("escape", "close", t("profile_manager.close_binding"))]
 
     def action_close(self) -> None:
         self.dismiss(None)
@@ -72,53 +75,92 @@ class ProfileManagerScreen(ModalScreen):
     def compose(self) -> ComposeResult:
         with Vertical(id="pm-dialog"):
             with Horizontal(id="pm-header"):
-                yield Label("Gestionar perfiles", id="pm-title")
-                yield Button("✕ Cerrar", id="btn-pm-close", variant="default")
+                yield Label(t("profile_manager.title"), id="pm-title")
+                yield Button(t("profile_manager.close_button"), id="btn-pm-close", variant="default")
             with Horizontal(id="pm-layout"):
                 with Vertical(id="pm-list-panel"):
-                    yield Label("Perfiles existentes")
+                    yield Label(t("profile_manager.existing_label"), id="lbl-pm-existing")
                     yield DataTable(id="pm-table")
                     with Horizontal():
-                        yield Button("+ Nuevo", id="btn-pm-new", variant="success")
+                        yield Button(t("profile_manager.new_button"), id="btn-pm-new", variant="success")
                         yield Button(
-                            "Editar", id="btn-pm-edit", variant="default", disabled=True
+                            t("profile_manager.edit_button"), id="btn-pm-edit", variant="default", disabled=True
                         )
                         yield Button(
-                            "Borrar", id="btn-pm-delete", variant="error", disabled=True
+                            t("profile_manager.delete_button"), id="btn-pm-delete", variant="error", disabled=True
                         )
                     yield Label("", id="pm-feedback")
                 with Vertical(id="pm-form-panel"):
-                    yield Label("Nombre:")
-                    yield Input(id="pm-name", placeholder="Ej: Negociación")
-                    yield Label("Descripción:")
-                    yield Input(id="pm-desc", placeholder="Descripción breve")
-                    yield Label("Addon de sistema (opcional):")
+                    yield Label(t("profile_manager.name_label"), id="lbl-pm-name")
+                    yield Input(id="pm-name", placeholder=t("profile_manager.name_placeholder"))
+                    yield Label(t("profile_manager.description_label"), id="lbl-pm-desc")
+                    yield Input(id="pm-desc", placeholder=t("profile_manager.description_placeholder"))
+                    yield Label(t("profile_manager.addon_label"), id="lbl-pm-addon")
                     yield Input(
-                        id="pm-addon", placeholder="Instrucción extra para el LLM"
+                        id="pm-addon", placeholder=t("profile_manager.addon_placeholder")
                     )
-                    yield Label("Modo de respuesta:")
+                    yield Label(t("profile_manager.response_mode_label"), id="lbl-pm-response-mode")
                     yield Select(
                         [(mode.value, mode.value) for mode in ResponseMode],
                         id="pm-response-mode",
                         value="copilot",
                     )
-                    yield Label("Modelo:")
+                    yield Label(t("profile_manager.model_label"), id="lbl-pm-model")
                     yield Select(
                         build_model_select_options(config_defaults.llm_backend()),
                         id="pm-model",
                         value="",
                     )
                     yield Button(
-                        "↻ Actualizar modelos",
+                        t("profile_manager.refresh_models_button"),
                         id="btn-pm-refresh-models",
                         variant="default",
                     )
-                    yield Button("Guardar", id="btn-pm-save", variant="primary")
+                    yield Button(t("profile_manager.save_button"), id="btn-pm-save", variant="primary")
 
-    def on_mount(self) -> None:
+    def retranslate(self) -> None:
+        """Re-apply t() to static chrome and rebuild the DataTable's
+        columns (clear+re-add, then repopulate — mirrors video.py's
+        retranslate()). Doesn't touch typed form Input values (user data)
+        or the feedback line (result state)."""
+        self.query_one("#pm-title", Label).update(t("profile_manager.title"))
+        self.query_one("#btn-pm-close", Button).label = t("profile_manager.close_button")
+        self.query_one("#lbl-pm-existing", Label).update(t("profile_manager.existing_label"))
+        self.query_one("#btn-pm-new", Button).label = t("profile_manager.new_button")
+        self.query_one("#btn-pm-edit", Button).label = t("profile_manager.edit_button")
+        self.query_one("#btn-pm-delete", Button).label = t("profile_manager.delete_button")
+        self.query_one("#lbl-pm-name", Label).update(t("profile_manager.name_label"))
+        name_input = self.query_one("#pm-name", Input)
+        if not name_input.value:
+            name_input.placeholder = t("profile_manager.name_placeholder")
+        self.query_one("#lbl-pm-desc", Label).update(t("profile_manager.description_label"))
+        desc_input = self.query_one("#pm-desc", Input)
+        if not desc_input.value:
+            desc_input.placeholder = t("profile_manager.description_placeholder")
+        self.query_one("#lbl-pm-addon", Label).update(t("profile_manager.addon_label"))
+        addon_input = self.query_one("#pm-addon", Input)
+        if not addon_input.value:
+            addon_input.placeholder = t("profile_manager.addon_placeholder")
+        self.query_one("#lbl-pm-response-mode", Label).update(t("profile_manager.response_mode_label"))
+        self.query_one("#lbl-pm-model", Label).update(t("profile_manager.model_label"))
+        self.query_one("#btn-pm-refresh-models", Button).label = t("profile_manager.refresh_models_button")
+        self.query_one("#btn-pm-save", Button).label = t("profile_manager.save_button")
+        table = self.query_one("#pm-table", DataTable)
+        table.clear(columns=True)
+        self._setup_table()
+        self._refresh()
+
+    def _setup_table(self) -> None:
         table = self.query_one("#pm-table", DataTable)
         table.cursor_type = "row"
-        table.add_columns("ID", "Nombre", "Addon")
+        table.add_columns(
+            t("profile_manager.column_id"),
+            t("profile_manager.column_name"),
+            t("profile_manager.column_addon"),
+        )
+
+    def on_mount(self) -> None:
+        self._setup_table()
         self._refresh()
 
     def _refresh(self) -> None:
@@ -183,17 +225,17 @@ class ProfileManagerScreen(ModalScreen):
         select = self.query_one("#pm-model", Select)
         select.set_options(build_model_select_options(backend))
         fb = self.query_one("#pm-feedback", Label)
-        fb.update("[green]Modelos actualizados.[/green]")
+        fb.update(f"[green]{t('profile_manager.models_updated_feedback')}[/green]")
 
     def _delete_selected(self) -> None:
         fb = self.query_one("#pm-feedback", Label)
         profiles = self._store.list()
         if len(profiles) <= 1:
-            fb.update("[red]No se puede borrar el último perfil.[/red]")
+            fb.update(f"[red]{t('profile_manager.cannot_delete_last')}[/red]")
             return
         self._store.delete(self._selected_id)
         self._refresh()
-        fb.update("[green]Perfil eliminado.[/green]")
+        fb.update(f"[green]{t('profile_manager.deleted_feedback')}[/green]")
 
     def _save(self) -> None:
         from src.profiles.models import ProfileHeuristics, CallProfile as _CP
@@ -211,7 +253,7 @@ class ProfileManagerScreen(ModalScreen):
         raw_model = self.query_one("#pm-model", Select).value
         model = str(raw_model) if raw_model and str(raw_model) != "None" else ""
         if not name:
-            fb.update("[red]El nombre no puede estar vacío.[/red]")
+            fb.update(f"[red]{t('profile_manager.name_required')}[/red]")
             return
         if self._selected_id:
             existing = self._store.get(self._selected_id)
@@ -226,7 +268,7 @@ class ProfileManagerScreen(ModalScreen):
                     model=model,
                 )
                 self._store.update(updated)
-                fb.update("[green]Perfil actualizado.[/green]")
+                fb.update(f"[green]{t('profile_manager.updated_feedback')}[/green]")
         else:
             new_id = name.lower().replace(" ", "_")
             # Avoid collisions with a uuid suffix when id already exists
@@ -242,7 +284,7 @@ class ProfileManagerScreen(ModalScreen):
                 model=model,
             )
             self._store.add(new_profile)
-            fb.update("[green]Perfil creado.[/green]")
+            fb.update(f"[green]{t('profile_manager.created_feedback')}[/green]")
         self._refresh()
         self._clear_form()
 

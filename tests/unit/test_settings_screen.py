@@ -13,9 +13,12 @@ import pytest
 
 from src.tui.screens.settings import (
     validate_settings_form, diff_changed_keys, summarize_scopes, key_to_provider,
-    format_sync_feedback,
+    format_sync_feedback, key_placeholder,
 )
 from src.core.config_defaults import WHISPER_SIZES
+
+# `english`/`spanish` fixtures come from tests/conftest.py (shared across
+# every migrated TUI module's tests).
 
 
 # ---------------------------------------------------------------------------
@@ -109,29 +112,29 @@ class TestDiffChangedKeys:
 # ---------------------------------------------------------------------------
 
 class TestSummarizeScopes:
-    def test_stt_backend_maps_to_restart_badge(self):
+    def test_stt_backend_maps_to_restart_badge(self, spanish):
         result = summarize_scopes(["STT_BACKEND"])
         assert "reiniciar" in result["STT_BACKEND"]
 
-    def test_whisper_model_call_maps_to_restart_badge(self):
+    def test_whisper_model_call_maps_to_restart_badge(self, spanish):
         result = summarize_scopes(["WHISPER_MODEL_CALL"])
         assert "reiniciar" in result["WHISPER_MODEL_CALL"]
 
-    def test_whisper_model_video_maps_to_next_video_badge_not_restart(self):
+    def test_whisper_model_video_maps_to_next_video_badge_not_restart(self, spanish):
         result = summarize_scopes(["WHISPER_MODEL_VIDEO"])
         assert "reiniciar" not in result["WHISPER_MODEL_VIDEO"]
         assert "video" in result["WHISPER_MODEL_VIDEO"]
 
-    def test_silence_threshold_maps_to_restart_badge(self):
+    def test_silence_threshold_maps_to_restart_badge(self, spanish):
         result = summarize_scopes(["SILENCE_THRESHOLD_MS"])
         assert "reiniciar" in result["SILENCE_THRESHOLD_MS"]
 
-    def test_llm_backend_maps_to_next_call_badge(self):
+    def test_llm_backend_maps_to_next_call_badge(self, spanish):
         result = summarize_scopes(["LLM_BACKEND"])
         assert "llamada" in result["LLM_BACKEND"]
         assert "reiniciar" not in result["LLM_BACKEND"]
 
-    def test_api_key_maps_to_next_call_badge(self):
+    def test_api_key_maps_to_next_call_badge(self, spanish):
         result = summarize_scopes(["OPENAI_API_KEY"])
         assert "llamada" in result["OPENAI_API_KEY"]
 
@@ -175,3 +178,60 @@ class TestFormatSyncFeedback:
     def test_zero_imported_and_zero_skipped_still_reports_success(self):
         msg = format_sync_feedback(0, 0)
         assert "0" in msg
+
+
+# ---------------------------------------------------------------------------
+# key_placeholder() — masked/empty placeholder for API key Inputs
+# ---------------------------------------------------------------------------
+
+class TestKeyPlaceholder:
+    def test_masked_when_env_var_set(self, monkeypatch):
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-something")
+        assert "configur" in key_placeholder("OPENAI_API_KEY")
+
+    def test_not_configured_when_env_var_unset(self, monkeypatch):
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+        assert key_placeholder("OPENAI_API_KEY") != ""
+
+
+# ---------------------------------------------------------------------------
+# i18n-hot-swap-tui — same pure functions, asserted in English via t()
+# ---------------------------------------------------------------------------
+
+class TestValidateSettingsFormEnglish:
+    def test_invalid_whisper_model_call_message_in_english(self, english):
+        errors = validate_settings_form({"WHISPER_MODEL_CALL": "not-a-real-size"})
+        assert "invalid" in errors[0]
+        assert "WHISPER_MODEL_CALL" in errors[0]
+
+    def test_non_numeric_silence_threshold_message_in_english(self, english):
+        errors = validate_settings_form({"SILENCE_THRESHOLD_MS": "abc"})
+        assert "must be an integer" in errors[0]
+
+    def test_silence_threshold_out_of_range_message_in_english(self, english):
+        errors = validate_settings_form({"SILENCE_THRESHOLD_MS": "50"})
+        assert "must be between" in errors[0]
+
+
+class TestSummarizeScopesEnglish:
+    def test_stt_backend_maps_to_restart_badge(self, english):
+        result = summarize_scopes(["STT_BACKEND"])
+        assert "restart" in result["STT_BACKEND"]
+
+    def test_whisper_model_video_maps_to_next_video_badge_not_restart(self, english):
+        result = summarize_scopes(["WHISPER_MODEL_VIDEO"])
+        assert "restart" not in result["WHISPER_MODEL_VIDEO"]
+        assert "video" in result["WHISPER_MODEL_VIDEO"]
+
+    def test_llm_backend_maps_to_next_call_badge(self, english):
+        result = summarize_scopes(["LLM_BACKEND"])
+        assert "call" in result["LLM_BACKEND"]
+        assert "restart" not in result["LLM_BACKEND"]
+
+
+class TestFormatSyncFeedbackEnglish:
+    def test_reports_imported_and_skipped_counts(self, english):
+        msg = format_sync_feedback(3, 1)
+        assert "Synced" in msg
+        assert "3" in msg
+        assert "1" in msg
