@@ -19,6 +19,6 @@ jobs:
           python-version: ${{ matrix.python-version }}
           cache: pip
       - name: Install test dependencies
-        run: pip install pytest pytest-asyncio python-dotenv
+        run: pip install pytest pytest-asyncio python-dotenv rich
       - name: Run tests
         run: python -m pytest -q
