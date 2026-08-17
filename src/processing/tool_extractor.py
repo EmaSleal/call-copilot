@@ -11,11 +11,13 @@ Supported LLM backends: ollama (default) | gpt | claude
 """
 
 import asyncio
+import concurrent.futures
 import json
 import logging
 import os
 import sqlite3
 from pathlib import Path
+from typing import Coroutine, TypeVar
 
 from openai import AsyncOpenAI
 
@@ -32,6 +34,34 @@ from src.llm.backend import call_llm_backend
 from src.rag.tools_store import ToolsCatalogStore
 
 logger = logging.getLogger("call_copilot.processing.tool_extractor")
+
+_T = TypeVar("_T")
+
+
+def _run_coro_sync(coro: Coroutine[object, object, _T]) -> _T:
+    """
+    Run `coro` to completion from synchronous code, whether or not the
+    caller is already inside a running event loop.
+
+    ingest_tools()/import_from_tech_scout() both call this to embed tools
+    (async ToolsCatalogStore.add_tool) from a sync function. Plain
+    asyncio.run() works when called from a normal sync context (e.g.
+    ingest_tools() from session_processor), but raises "asyncio.run()
+    cannot be called from a running event loop" when the caller is
+    already inside one — which is exactly what happens when
+    import_from_tech_scout() runs from SettingsScreen's synchronous
+    on_button_pressed handler, itself running inside Textual's own
+    asyncio loop. When a loop is already running, spin up a fresh one on
+    a separate thread instead of trying to nest loops, and block until
+    it's done — matches this function's existing fully-synchronous
+    contract.
+    """
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(coro)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+        return pool.submit(asyncio.run, coro).result()
 
 _TOOLS_SYSTEM = (
     "You are a technical analyst. Identify concrete tools mentioned in the transcript.\n"
@@ -158,7 +188,7 @@ def ingest_tools(call_session_id: int, spoken_text: str) -> int:
         touched_tools.append(tool)
 
     if touched_tools:
-        asyncio.run(_embed_tools(touched_tools))
+        _run_coro_sync(_embed_tools(touched_tools))
 
     return len(touched_tools)
 
@@ -219,7 +249,7 @@ def import_from_tech_scout(db_path: str) -> tuple[int, int]:
         imported.append(create_tool(tool))
 
     if imported:
-        asyncio.run(_embed_tools(imported))
+        _run_coro_sync(_embed_tools(imported))
 
     return len(imported), skipped
 
