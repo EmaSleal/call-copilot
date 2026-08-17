@@ -26,6 +26,7 @@ from src.core.interfaces import (
     TriggerEvent,
     TriggerReason,
     LLMProvider,
+    LLMResponse,
     OutputSink,
     TranscriptSegment,
 )
@@ -299,36 +300,26 @@ class CallCopilotPipeline:
         )
         full_response = ""
         try:
-            if response_mode == "silent":
-                # Buffer silent-mode responses to filter meta-instructions before emitting.
-                async for response in self.llm.respond(
-                    base,
-                    trigger_event,
-                    system_prompt_addon=system_prompt_addon,
-                    conservative_mode=conservative_mode,
-                    response_mode=response_mode,
-                    model_override=model_override,
-                ):
-                    if not response.is_partial:
-                        full_response = response.text
-                if full_response.strip().lower() not in _META_RESPONSES:
-                    from src.core.interfaces import LLMResponse
-                    await self.output.emit(LLMResponse(text=full_response, is_partial=False))
-            else:
-                async for response in self.llm.respond(
-                    base,
-                    trigger_event,
-                    system_prompt_addon=system_prompt_addon,
-                    conservative_mode=conservative_mode,
-                    response_mode=response_mode,
-                    model_override=model_override,
-                ):
+            # Silent mode buffers responses to filter meta-instructions before
+            # emitting (nothing is emitted mid-stream); every other mode
+            # streams each chunk to the output sink as it arrives.
+            async for response in self.llm.respond(
+                base,
+                trigger_event,
+                system_prompt_addon=system_prompt_addon,
+                conservative_mode=conservative_mode,
+                response_mode=response_mode,
+                model_override=model_override,
+            ):
+                if response_mode != "silent":
                     await self.output.emit(response)
-                    if not response.is_partial:
-                        full_response = response.text
+                if not response.is_partial:
+                    full_response = response.text
+
+            if response_mode == "silent" and full_response.strip().lower() not in _META_RESPONSES:
+                await self.output.emit(LLMResponse(text=full_response, is_partial=False))
         except Exception as e:
             logger.error("error calling LLM: %s", e, exc_info=True)
-            from src.core.interfaces import LLMResponse
             await self.output.emit(LLMResponse(text=f"[LLM error: {e}]", is_partial=False))
 
         self.session_logger.log_response(rag_context, full_response)
