@@ -204,6 +204,18 @@ def _parse_grouper_response(raw: str) -> Optional[list[dict]]:
         return None
 
 
+def _run_best_effort(step: str, call_session_id: int, fn) -> None:
+    """Run a post-persistence side-effect step, isolating any failure so it
+    never affects idea persistence or the other steps (spec: best-effort,
+    isolated). Shared by tools ingestion, search indexing, and
+    catalog-maintenance — steps 9-11 of process().
+    """
+    try:
+        fn()
+    except Exception as exc:
+        logger.error("session %d: %s failed (%s)", call_session_id, step, exc)
+
+
 def process(call_session_id: int, transcript_path: str) -> int:
     """
     Group, classify, and persist ideas from a call session transcript.
@@ -286,25 +298,25 @@ def process(call_session_id: int, transcript_path: str) -> int:
     # Step 9: Tools Catalog ingestion — best-effort, must never affect idea
     # persistence. Any failure (extraction, dedup, persistence, or embedding)
     # is caught and logged here.
-    try:
-        ingest_tools(call_session_id, spoken_text)
-    except Exception as exc:
-        logger.error("session %d: tools ingestion failed (%s)", call_session_id, exc)
+    _run_best_effort(
+        "tools ingestion", call_session_id,
+        lambda: ingest_tools(call_session_id, spoken_text),
+    )
 
     # Step 10: semantic search indexing — best-effort, coexists with the
     # full-text SQL search and must never affect idea persistence either.
-    try:
+    def _index_persisted_segments() -> None:
         for seg_id, text in persisted_segments:
             index_segment("call", seg_id, text)
-    except Exception as exc:
-        logger.error("session %d: search indexing failed (%s)", call_session_id, exc)
+
+    _run_best_effort("search indexing", call_session_id, _index_persisted_segments)
 
     # Step 11: catalog-maintenance agent — best-effort, must never affect
     # idea persistence. OpenAI-gated like Tools Catalog/search indexing;
     # skips silently without OPENAI_API_KEY.
-    try:
-        run_catalog_maintenance(call_session_id)
-    except Exception as exc:
-        logger.error("session %d: catalog maintenance failed (%s)", call_session_id, exc)
+    _run_best_effort(
+        "catalog maintenance", call_session_id,
+        lambda: run_catalog_maintenance(call_session_id),
+    )
 
     return saved
