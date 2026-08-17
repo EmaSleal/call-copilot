@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.5.0](https://github.com/EmaSleal/call-copilot/compare/v0.4.0...v0.5.0) (2026-08-17)
+
+
+### Features
+
+* **agent:** land the AI-agent CRUD foundation stack on main ([2c17c25](https://github.com/EmaSleal/call-copilot/commit/2c17c2585e1df4cd2dd24e1fb49cdc8bc85c4933))
+* **agent:** wire OpenAI tool-calling catalog-maintenance agent into post-call flow ([d98e0d0](https://github.com/EmaSleal/call-copilot/commit/d98e0d08867747041a6b9a22cf6d491c0c7ef033))
+* **tui:** add Pendientes tab to approve/reject agent-proposed deletes ([54c0a6a](https://github.com/EmaSleal/call-copilot/commit/54c0a6a266889733ad18b25a2b3748ed07376fac))
+
+
+### Bug Fixes
+
+* **tui:** remove dead sync_category_embedding import from video/modal tabs ([0e3f7c8](https://github.com/EmaSleal/call-copilot/commit/0e3f7c850dfbd28a9b8d89a7d2d4c3b2fd3c97c4))
+
 ## [0.4.0](https://github.com/EmaSleal/call-copilot/compare/v0.3.0...v0.4.0) (2026-08-17)
 
 
