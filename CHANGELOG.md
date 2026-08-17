@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.6.0](https://github.com/EmaSleal/call-copilot/compare/v0.5.0...v0.6.0) (2026-08-17)
+
+
+### Features
+
+* **i18n:** add runtime ES/EN language switching to the TUI ([3ed4c5d](https://github.com/EmaSleal/call-copilot/commit/3ed4c5dce684268f6658659eddecc68e09298a8f))
+* **tui:** categories color swatch, dimmed subcategories, i18n, and a Select crash fix ([e867636](https://github.com/EmaSleal/call-copilot/commit/e8676361999f8cad402ae25b7df61f738cf771a2))
+
+
+### Bug Fixes
+
+* **processing:** let tech-scout sync run inside a running event loop ([5c6d56a](https://github.com/EmaSleal/call-copilot/commit/5c6d56aafc0924a0ffab372d7fa0e4c9ee97f4fa))
+* **video:** work around YouTube blocking yt-dlp's default player client ([15beaa1](https://github.com/EmaSleal/call-copilot/commit/15beaa17a960c9dde76c457bf08203e7913f4d2a))
+
+
+### Documentation
+
+* document i18n language switch, Pendientes tab, and full DB schema ([427eca5](https://github.com/EmaSleal/call-copilot/commit/427eca50376267e8ae9290276ddf879a529cf2c9))
+
 ## [0.5.0](https://github.com/EmaSleal/call-copilot/compare/v0.4.0...v0.5.0) (2026-08-17)
 
 
