@@ -19,7 +19,6 @@ from src.processing.category_dedup import (
     DedupVerdict,
     create_checked_suggestions,
     dedup_suggestions,
-    sync_category_embedding,
     verdict_label,
 )
 from src.processing.category_reclassify import reclassify_category
