@@ -102,6 +102,22 @@ class ToolMention:
 
 
 @dataclass
+class PendingAction:
+    """An agent-proposed delete awaiting human approval (D2: agent writes
+    run autonomously, deletes always wait for a human)."""
+    id: Optional[int]
+    actor: str
+    action: str
+    table_name: str
+    row_id: int
+    reason: str = ""
+    status: str = "pending"  # pending | approved | rejected
+    created_at: str = field(default_factory=lambda: datetime.now().isoformat())
+    resolved_at: Optional[str] = None
+    resolved_by: Optional[str] = None
+
+
+@dataclass
 class UnifiedSegment:
     """Read-only row from the `unified_segments` view (video + call, same categories)."""
     id: int
@@ -199,6 +215,19 @@ def init_db() -> None:
             row_id      INTEGER NOT NULL,
             details     TEXT,
             created_at  TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS pending_actions (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            actor       TEXT NOT NULL,
+            action      TEXT NOT NULL,
+            table_name  TEXT NOT NULL,
+            row_id      INTEGER NOT NULL,
+            reason      TEXT NOT NULL DEFAULT '',
+            status      TEXT NOT NULL DEFAULT 'pending',
+            created_at  TEXT NOT NULL,
+            resolved_at TEXT,
+            resolved_by TEXT
         );
         """)
         _seed_categories(conn)
@@ -556,9 +585,20 @@ def create_call_session(
 def get_call_sessions() -> list[CallSession]:
     with _conn() as conn:
         rows = conn.execute(
-            "SELECT * FROM call_sessions ORDER BY created_at DESC"
+            "SELECT * FROM call_sessions WHERE deleted_at IS NULL ORDER BY created_at DESC"
         ).fetchall()
     return [CallSession(**dict(r)) for r in rows]
+
+
+def delete_call_session(call_session_id: int, actor: str = "human") -> None:
+    with _conn() as conn:
+        now = datetime.now().isoformat()
+        conn.execute(
+            "UPDATE call_segments SET deleted_at=? WHERE call_session_id=?",
+            (now, call_session_id),
+        )
+        conn.execute("UPDATE call_sessions SET deleted_at=? WHERE id=?", (now, call_session_id))
+        _write_audit_log(conn, actor, "delete_call_session", "call_sessions", call_session_id)
 
 
 def set_call_session_title(call_session_id: int, title: str) -> None:
@@ -588,7 +628,7 @@ def get_call_segments(call_session_id: int) -> list[CallSegment]:
     """Return all CallSegment rows for the given call session, ordered by sort_order."""
     with _conn() as conn:
         rows = conn.execute(
-            "SELECT * FROM call_segments WHERE call_session_id=? ORDER BY sort_order",
+            "SELECT * FROM call_segments WHERE call_session_id=? AND deleted_at IS NULL ORDER BY sort_order",
             (call_session_id,)
         ).fetchall()
     return [CallSegment(**dict(r)) for r in rows]
@@ -599,7 +639,7 @@ def get_call_segments_by_category_global(category_id: int) -> list[CallSegment]:
     scoped to one session) — used by Historial's global reclassify tool."""
     with _conn() as conn:
         rows = conn.execute(
-            "SELECT * FROM call_segments WHERE category_id=?", (category_id,)
+            "SELECT * FROM call_segments WHERE category_id=? AND deleted_at IS NULL", (category_id,)
         ).fetchall()
     return [CallSegment(**dict(r)) for r in rows]
 
@@ -620,10 +660,19 @@ def get_call_segments_by_ids(ids: list[int]) -> list[CallSegment]:
     placeholders = ",".join("?" for _ in ids)
     with _conn() as conn:
         rows = conn.execute(
-            f"SELECT * FROM call_segments WHERE id IN ({placeholders})", ids
+            f"SELECT * FROM call_segments WHERE id IN ({placeholders}) AND deleted_at IS NULL", ids
         ).fetchall()
     by_id = {r["id"]: CallSegment(**dict(r)) for r in rows}
     return [by_id[i] for i in ids if i in by_id]
+
+
+def delete_call_segment(segment_id: int, actor: str = "human") -> None:
+    with _conn() as conn:
+        conn.execute(
+            "UPDATE call_segments SET deleted_at=? WHERE id=?",
+            (datetime.now().isoformat(), segment_id),
+        )
+        _write_audit_log(conn, actor, "delete_call_segment", "call_segments", segment_id)
 
 
 # ─────────────────────────────────────────────────────────────
@@ -655,14 +704,14 @@ def find_tool_by_name(name: str) -> Optional[Tool]:
     normalized = normalize_tool_name(name)
     with _conn() as conn:
         row = conn.execute(
-            "SELECT * FROM tools WHERE normalized_name=?", (normalized,)
+            "SELECT * FROM tools WHERE normalized_name=? AND deleted_at IS NULL", (normalized,)
         ).fetchone()
     return Tool(**dict(row)) if row else None
 
 
 def get_tools() -> list[Tool]:
     with _conn() as conn:
-        rows = conn.execute("SELECT * FROM tools ORDER BY name").fetchall()
+        rows = conn.execute("SELECT * FROM tools WHERE deleted_at IS NULL ORDER BY name").fetchall()
     return [Tool(**dict(r)) for r in rows]
 
 
@@ -673,10 +722,19 @@ def get_tools_by_ids(ids: list[int]) -> list[Tool]:
     placeholders = ",".join("?" for _ in ids)
     with _conn() as conn:
         rows = conn.execute(
-            f"SELECT * FROM tools WHERE id IN ({placeholders})", ids
+            f"SELECT * FROM tools WHERE id IN ({placeholders}) AND deleted_at IS NULL", ids
         ).fetchall()
     by_id = {r["id"]: Tool(**dict(r)) for r in rows}
     return [by_id[i] for i in ids if i in by_id]
+
+
+def delete_tool(tool_id: int, actor: str = "human") -> None:
+    with _conn() as conn:
+        conn.execute(
+            "UPDATE tools SET deleted_at=? WHERE id=?",
+            (datetime.now().isoformat(), tool_id),
+        )
+        _write_audit_log(conn, actor, "delete_tool", "tools", tool_id)
 
 
 def save_tool_mention(m: ToolMention) -> int:
@@ -694,10 +752,60 @@ def get_tool_mentions(tool_id: int) -> list[ToolMention]:
     """Return all ToolMention rows for a tool, ordered oldest-first. Unbounded."""
     with _conn() as conn:
         rows = conn.execute(
-            "SELECT * FROM tool_mentions WHERE tool_id=? ORDER BY id",
+            "SELECT * FROM tool_mentions WHERE tool_id=? AND deleted_at IS NULL ORDER BY id",
             (tool_id,)
         ).fetchall()
     return [ToolMention(**dict(r)) for r in rows]
+
+
+def delete_tool_mention(mention_id: int, actor: str = "human") -> None:
+    with _conn() as conn:
+        conn.execute(
+            "UPDATE tool_mentions SET deleted_at=? WHERE id=?",
+            (datetime.now().isoformat(), mention_id),
+        )
+        _write_audit_log(conn, actor, "delete_tool_mention", "tool_mentions", mention_id)
+
+
+# ─────────────────────────────────────────────────────────────
+# DAOs — Pending Actions (agent-proposed deletes awaiting human approval)
+# ─────────────────────────────────────────────────────────────
+
+def create_pending_action(
+    actor: str, action: str, table_name: str, row_id: int, reason: str = ""
+) -> PendingAction:
+    pa = PendingAction(
+        id=None, actor=actor, action=action, table_name=table_name, row_id=row_id, reason=reason
+    )
+    with _conn() as conn:
+        cur = conn.execute(
+            """INSERT INTO pending_actions
+               (actor, action, table_name, row_id, reason, status, created_at)
+               VALUES (?,?,?,?,?,?,?)""",
+            (pa.actor, pa.action, pa.table_name, pa.row_id, pa.reason, pa.status, pa.created_at)
+        )
+        pa.id = cur.lastrowid
+    return pa
+
+
+def get_pending_actions(status: str = "pending") -> list[PendingAction]:
+    with _conn() as conn:
+        rows = conn.execute(
+            "SELECT * FROM pending_actions WHERE status=? ORDER BY created_at", (status,)
+        ).fetchall()
+    return [PendingAction(**dict(r)) for r in rows]
+
+
+def resolve_pending_action(pending_id: int, status: str, resolved_by: str) -> None:
+    """`status` is the caller's decision: "approved" or "rejected". Only
+    updates bookkeeping — actually executing an approved delete is the
+    command layer's job (src.agent.commands), since only it knows how to
+    map an action name back to the real DAO delete function."""
+    with _conn() as conn:
+        conn.execute(
+            "UPDATE pending_actions SET status=?, resolved_at=?, resolved_by=? WHERE id=?",
+            (status, datetime.now().isoformat(), resolved_by, pending_id),
+        )
 
 
 # ─────────────────────────────────────────────────────────────

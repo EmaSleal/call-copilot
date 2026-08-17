@@ -25,6 +25,7 @@ from typing import Optional
 import anthropic
 import openai
 
+from src.agent.maintenance import run as run_catalog_maintenance
 from src.db.database import CallSegment, get_categories, save_call_segment
 from src.processing.search_indexer import index_segment
 from src.processing.tool_extractor import ingest_tools
@@ -217,6 +218,8 @@ def process(call_session_id: int, transcript_path: str) -> int:
       7. Classify ideas via classify_segments_batch.
       8. Persist each idea as a CallSegment row.
       9. Ingest concrete tools mentioned in the transcript (best-effort, isolated).
+      10. Semantic search indexing (best-effort, isolated).
+      11. Run the catalog-maintenance agent (best-effort, isolated).
 
     Returns:
       Number of ideas persisted (0 if skipped or empty).
@@ -295,5 +298,13 @@ def process(call_session_id: int, transcript_path: str) -> int:
             index_segment("call", seg_id, text)
     except Exception as exc:
         logger.error("session %d: search indexing failed (%s)", call_session_id, exc)
+
+    # Step 11: catalog-maintenance agent — best-effort, must never affect
+    # idea persistence. OpenAI-gated like Tools Catalog/search indexing;
+    # skips silently without OPENAI_API_KEY.
+    try:
+        run_catalog_maintenance(call_session_id)
+    except Exception as exc:
+        logger.error("session %d: catalog maintenance failed (%s)", call_session_id, exc)
 
     return saved
