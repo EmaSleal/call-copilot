@@ -173,8 +173,25 @@ def _check_dependencies() -> None:
 
 def _yt_dlp_cmd() -> list[str]:
     """Invoca yt-dlp como módulo del venv actual en vez de un binario de
-    PATH — ver _check_dependencies."""
-    return [sys.executable, "-m", "yt_dlp"]
+    PATH — ver _check_dependencies.
+
+    --extractor-args player_client=mweb + --remote-components ejs:github:
+    YouTube's current anti-bot rollout breaks yt-dlp's default client
+    selection — confirmed manually against a real video: the default
+    "android_vr" client gets HTTP 403, "web" only exposes image formats,
+    "tv" gets DRM-blocked (yt-dlp issue #12563). "mweb" is the one client
+    that still exposes at least one muxed format (no PO token needed for
+    it specifically), but it needs the remote JS-challenge solver enabled
+    to pass YouTube's "n" parameter check — without it, formats silently
+    disappear instead of erroring, which is worse. The solver script is
+    cached after the first call (~17s cold, ~3s warm), well inside
+    _get_title's 30s timeout.
+    """
+    return [
+        sys.executable, "-m", "yt_dlp",
+        "--remote-components", "ejs:github",
+        "--extractor-args", "youtube:player_client=mweb",
+    ]
 
 
 def _ffmpeg_path() -> str:
