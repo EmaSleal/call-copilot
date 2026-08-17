@@ -145,11 +145,71 @@ class TestFormatCategoryRow:
         assert format_category_row(cat, 1) == "└─ Tipografía"
 
 
+class TestColorSwatch:
+    """Color column renders an actual swatch block instead of a raw hex
+    string, so categories are recognizable at a glance."""
+
+    def test_valid_hex_color_is_used_as_the_swatch_style(self):
+        from src.tui.tabs.categories import color_swatch
+
+        text = color_swatch("#6366f1")
+        assert text.spans[0].style.color.name == "#6366f1"
+
+    def test_valid_hex_color_text_includes_the_hex_code(self):
+        from src.tui.tabs.categories import color_swatch
+
+        text = color_swatch("#6366f1")
+        assert "#6366f1" in text.plain
+
+    def test_invalid_color_falls_back_instead_of_raising(self):
+        from src.tui.tabs.categories import color_swatch
+
+        text = color_swatch("not-a-color")
+        assert text.spans[0].style.color.name == "grey50"
+
+
+class TestCategoryRowCells:
+    """Full DataTable row (id, name, color swatch, description) for one
+    category — subcategory rows (depth 1) render dimmed so the hierarchy
+    reads at a glance."""
+
+    def test_top_level_row_is_not_dimmed(self):
+        from src.tui.tabs.categories import category_row_cells
+
+        cat = Category(id=1, name="Diseño", description="d", color="#6366f1")
+        id_cell, name_cell, color_cell, desc_cell = category_row_cells(cat, 0)
+
+        assert id_cell.plain == "1"
+        assert name_cell.plain == "Diseño"
+        assert "dim" not in str(id_cell.spans)
+        assert "dim" not in str(name_cell.spans)
+
+    def test_subcategory_row_is_dimmed(self):
+        from src.tui.tabs.categories import category_row_cells
+
+        cat = Category(id=2, name="Tipografía", description="d", color="#6366f1", parent_id=1)
+        id_cell, name_cell, color_cell, desc_cell = category_row_cells(cat, 1)
+
+        assert name_cell.plain == "└─ Tipografía"
+        assert any("dim" in str(span.style) for span in id_cell.spans)
+        assert any("dim" in str(span.style) for span in name_cell.spans)
+        assert any("dim" in str(span.style) for span in color_cell.spans)
+        assert any("dim" in str(span.style) for span in desc_cell.spans)
+
+    def test_description_is_truncated_to_40_chars(self):
+        from src.tui.tabs.categories import category_row_cells
+
+        cat = Category(id=1, name="X", description="y" * 100, color="#6366f1")
+        _id, _name, _color, desc_cell = category_row_cells(cat, 0)
+
+        assert len(desc_cell.plain) == 40
+
+
 class TestSaveCategoryFeedback:
     """DAO `ValueError` surfaced as feedback instead of crashing the TUI
     (design A3: single-level enforcement lives in the DAO)."""
 
-    def test_create_success_returns_green_feedback_and_the_saved_category(self):
+    def test_create_success_returns_green_feedback_and_the_saved_category(self, spanish):
         from src.tui.tabs.categories import save_category_feedback
 
         cat = Category(id=1, name="Marketing", description="d", color="#000")
@@ -159,7 +219,17 @@ class TestSaveCategoryFeedback:
         assert message == "[green]Categoría creada.[/green]"
         assert saved is cat
 
-    def test_update_success_returns_green_feedback_with_updated_wording(self):
+    def test_create_success_english(self, english):
+        from src.tui.tabs.categories import save_category_feedback
+
+        cat = Category(id=1, name="Marketing", description="d", color="#000")
+        success, message, saved = save_category_feedback(False, lambda: cat)
+
+        assert success is True
+        assert message == "[green]Category created.[/green]"
+        assert saved is cat
+
+    def test_update_success_returns_green_feedback_with_updated_wording(self, spanish):
         from src.tui.tabs.categories import save_category_feedback
 
         cat = Category(id=1, name="Marketing", description="d", color="#000")
@@ -167,6 +237,16 @@ class TestSaveCategoryFeedback:
 
         assert success is True
         assert message == "[green]Categoría actualizada.[/green]"
+        assert saved is cat
+
+    def test_update_success_english(self, english):
+        from src.tui.tabs.categories import save_category_feedback
+
+        cat = Category(id=1, name="Marketing", description="d", color="#000")
+        success, message, saved = save_category_feedback(True, lambda: cat)
+
+        assert success is True
+        assert message == "[green]Category updated.[/green]"
         assert saved is cat
 
     def test_dao_value_error_is_caught_and_surfaced_as_red_feedback(self):

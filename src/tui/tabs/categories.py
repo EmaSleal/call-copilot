@@ -2,13 +2,19 @@
 
 from typing import Optional
 
+from rich.style import Style
+from rich.text import Text
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
-from textual.widgets import Button, DataTable, Input, Label, Select, TabPane
+from textual.widgets import Button, DataTable, Input, Label, Select, TabbedContent, TabPane
 
 import src.db.database as db
 from src.db.database import Category
+from src.i18n import t
 from src.processing.category_dedup import forget_category_embedding, sync_category_embedding
+
+_SWATCH_BLOCK = "████ "
+_FALLBACK_SWATCH_COLOR = "grey50"
 
 
 def build_category_tree(categories: list[Category]) -> list[tuple[Category, int]]:
@@ -75,6 +81,43 @@ def format_category_row(category: Category, depth: int) -> str:
     return f"└─ {category.name}" if depth else category.name
 
 
+def color_swatch(color: str) -> Text:
+    """Colored block + hex code for the Color column, so a category's
+    color reads at a glance instead of as a raw hex string. Falls back to
+    a neutral gray block for a malformed color (e.g. a stray value from a
+    hand-edited .env/DB row) instead of letting Rich raise on an invalid
+    Style and crash the DataTable render.
+
+    Pure function — no side effects, easy to test without Textual.
+    """
+    try:
+        style = Style(color=color)
+    except Exception:
+        style = Style(color=_FALLBACK_SWATCH_COLOR)
+    text = Text()
+    text.append(_SWATCH_BLOCK, style=style)
+    text.append(color)
+    return text
+
+
+def category_row_cells(category: Category, depth: int) -> tuple[Text, Text, Text, Text]:
+    """Build one DataTable row (id, name, color swatch, description) for
+    `build_category_tree()`'s grouped list. Subcategory rows (depth 1)
+    render dimmed — the hierarchy is capped at one level (design A3), so
+    dimming reads clearly at a glance without needing deeper indentation.
+
+    Pure function — no side effects, easy to test without Textual.
+    """
+    id_cell = Text(str(category.id))
+    name_cell = Text(format_category_row(category, depth))
+    color_cell = color_swatch(category.color)
+    desc_cell = Text(category.description[:40])
+    if depth:
+        for cell in (id_cell, name_cell, color_cell, desc_cell):
+            cell.stylize("dim")
+    return id_cell, name_cell, color_cell, desc_cell
+
+
 def save_category_feedback(is_edit: bool, save_fn) -> tuple[bool, str, Optional[Category]]:
     """Invoke `save_fn()` — a zero-arg callable already bound to
     `db.create_category(...)`/`db.update_category(...)` args, returning the
@@ -91,54 +134,90 @@ def save_category_feedback(is_edit: bool, save_fn) -> tuple[bool, str, Optional[
     except ValueError as e:
         return False, f"[red]{e}[/red]", None
     message = (
-        "[green]Categoría actualizada.[/green]"
+        f"[green]{t('categories.updated_feedback')}[/green]"
         if is_edit
-        else "[green]Categoría creada.[/green]"
+        else f"[green]{t('categories.created_feedback')}[/green]"
     )
     return True, message, saved
 
 
 class CategoriesTab(TabPane):
     def __init__(self):
-        super().__init__("🏷  Categorías", id="tab-categories")
+        super().__init__(t("categories.tab_title"), id="tab-categories")
         self._selected_id = None
 
     def compose(self) -> ComposeResult:
         with Horizontal(id="cat-layout"):
             with Vertical(id="cat-list-panel"):
-                yield Label("Categorías existentes")
+                yield Label(t("categories.existing_label"), id="lbl-cat-existing")
                 yield DataTable(id="cat-table")
                 with Horizontal():
-                    yield Button("+ Nueva", id="btn-new-cat", variant="success")
+                    yield Button(t("categories.new_button"), id="btn-new-cat", variant="success")
                     yield Button(
-                        "Editar", id="btn-edit-cat", variant="default", disabled=True
+                        t("categories.edit_button"), id="btn-edit-cat", variant="default", disabled=True
                     )
                     yield Button(
-                        "Borrar", id="btn-delete-cat", variant="error", disabled=True
+                        t("categories.delete_button"), id="btn-delete-cat", variant="error", disabled=True
                     )
             with Vertical(id="cat-form-panel"):
-                yield Label("Nombre:")
-                yield Input(id="cat-name", placeholder="Ej: Marketing")
-                yield Label("Descripción:")
-                yield Input(id="cat-desc", placeholder="Descripción breve")
-                yield Label("Color (hex):")
+                yield Label(t("categories.name_label"), id="lbl-cat-name")
+                yield Input(id="cat-name", placeholder=t("categories.name_placeholder"))
+                yield Label(t("categories.description_label"), id="lbl-cat-desc")
+                yield Input(id="cat-desc", placeholder=t("categories.description_placeholder"))
+                yield Label(t("categories.color_label"), id="lbl-cat-color")
                 yield Input(id="cat-color", placeholder="#6366f1", value="#6366f1")
-                yield Label("Categoría padre:")
+                yield Label(t("categories.parent_label"), id="lbl-cat-parent")
                 yield Select(
                     [],
                     id="cat-parent",
                     allow_blank=True,
-                    prompt="— Sin padre (nivel superior) —",
+                    prompt=t("categories.parent_prompt"),
                 )
                 with Horizontal():
-                    yield Button("Guardar", id="btn-save-cat", variant="primary")
-                    yield Button("Cancelar", id="btn-cancel-cat", variant="default")
+                    yield Button(t("categories.save_button"), id="btn-save-cat", variant="primary")
+                    yield Button(t("categories.cancel_button"), id="btn-cancel-cat", variant="default")
                 yield Label("", id="cat-feedback")
 
-    def on_mount(self) -> None:
+    def retranslate(self) -> None:
+        """Re-apply t() to static chrome — not the DataTable's row data
+        (category names are user data) and not the feedback line (result
+        state, retranslated the next time it's set)."""
+        self.query_one("#lbl-cat-existing", Label).update(t("categories.existing_label"))
+        self.query_one("#btn-new-cat", Button).label = t("categories.new_button")
+        self.query_one("#btn-edit-cat", Button).label = t("categories.edit_button")
+        self.query_one("#btn-delete-cat", Button).label = t("categories.delete_button")
+        self.query_one("#lbl-cat-name", Label).update(t("categories.name_label"))
+        name_input = self.query_one("#cat-name", Input)
+        if not name_input.value:
+            name_input.placeholder = t("categories.name_placeholder")
+        self.query_one("#lbl-cat-desc", Label).update(t("categories.description_label"))
+        desc_input = self.query_one("#cat-desc", Input)
+        if not desc_input.value:
+            desc_input.placeholder = t("categories.description_placeholder")
+        self.query_one("#lbl-cat-color", Label).update(t("categories.color_label"))
+        self.query_one("#lbl-cat-parent", Label).update(t("categories.parent_label"))
+        self.query_one("#cat-parent", Select).prompt = t("categories.parent_prompt")
+        self.query_one("#btn-save-cat", Button).label = t("categories.save_button")
+        self.query_one("#btn-cancel-cat", Button).label = t("categories.cancel_button")
+        tab = self.app.query_one(TabbedContent).get_tab("tab-categories")
+        tab.label = t("categories.tab_title")
+        table = self.query_one("#cat-table", DataTable)
+        table.clear(columns=True)
+        self._setup_table()
+        self._refresh()
+
+    def _setup_table(self) -> None:
         table = self.query_one("#cat-table", DataTable)
         table.cursor_type = "row"
-        table.add_columns("ID", "Nombre", "Color", "Descripción")
+        table.add_columns(
+            t("categories.column_id"),
+            t("categories.column_name"),
+            t("categories.column_color"),
+            t("categories.column_description"),
+        )
+
+    def on_mount(self) -> None:
+        self._setup_table()
         self._refresh()
 
     def refresh_data(self) -> None:
@@ -152,9 +231,7 @@ class CategoriesTab(TabPane):
         table.clear()
         categories = db.get_categories()
         for c, depth in build_category_tree(categories):
-            table.add_row(
-                str(c.id), format_category_row(c, depth), c.color, c.description[:40], key=str(c.id)
-            )
+            table.add_row(*category_row_cells(c, depth), key=str(c.id))
         self._selected_id = None
         self._toggle_edit_buttons(False)
         self._refresh_parent_picker(categories, editing_id=None)
@@ -190,13 +267,16 @@ class CategoriesTab(TabPane):
                 self.query_one("#cat-color", Input).value = cat.color
                 self._refresh_parent_picker(categories, editing_id=self._selected_id)
                 select = self.query_one("#cat-parent", Select)
-                select.value = cat.parent_id if cat.parent_id is not None else Select.BLANK
+                if cat.parent_id is not None:
+                    select.value = cat.parent_id
+                else:
+                    select.clear()
         elif bid == "btn-delete-cat" and self._selected_id:
             db.delete_category(self._selected_id)
             forget_category_embedding(self._selected_id)
             self._refresh()
             self.query_one("#cat-feedback", Label).update(
-                "[green]Categoría eliminada.[/green]"
+                f"[green]{t('categories.deleted_feedback')}[/green]"
             )
         elif bid == "btn-save-cat":
             self._save()
@@ -209,7 +289,7 @@ class CategoriesTab(TabPane):
         color = self.query_one("#cat-color", Input).value.strip() or "#6366f1"
         fb = self.query_one("#cat-feedback", Label)
         if not name:
-            fb.update("[red]El nombre no puede estar vacío.[/red]")
+            fb.update(f"[red]{t('categories.name_required')}[/red]")
             return
 
         parent_select = self.query_one("#cat-parent", Select)
@@ -239,4 +319,4 @@ class CategoriesTab(TabPane):
         self.query_one("#cat-color", Input).value = "#6366f1"
         select = self.query_one("#cat-parent", Select)
         select.set_options(parent_select_options(db.get_categories(), editing_id=None))
-        select.value = Select.BLANK
+        select.clear()
