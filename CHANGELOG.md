@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.4.0](https://github.com/EmaSleal/call-copilot/compare/v0.3.0...v0.4.0) (2026-08-17)
+
+
+### Features
+
+* **db:** soft-delete + audit log for categories and video sessions ([20bbb17](https://github.com/EmaSleal/call-copilot/commit/20bbb17cdcf431564ea0c01480a4d1ef2239b46b))
+* **installer:** port the stale-venv cleanup/retry to install.ps1 and install.sh ([4bc5e85](https://github.com/EmaSleal/call-copilot/commit/4bc5e8564ee353a5cb95c6638b39e4d7600b9e29))
+* **rag,db:** soft-delete + audit log foundation for AI-agent CRUD ([f3327b6](https://github.com/EmaSleal/call-copilot/commit/f3327b6e8274d28286bd017c5f181fa11fcfd909))
+* **rag:** sync Chroma vector deletes with SQL soft-deletes ([dd65f2f](https://github.com/EmaSleal/call-copilot/commit/dd65f2f48d36efe03e96faec091f402dcb35be68))
+
+
+### Bug Fixes
+
+* **updater:** sweep leftover venv after uninstall, not just on update ([84f5dab](https://github.com/EmaSleal/call-copilot/commit/84f5dab7a7d83a14230f83150d6e10b359abee40))
+
 ## [0.3.0](https://github.com/EmaSleal/call-copilot/compare/v0.2.0...v0.3.0) (2026-08-15)
 
 
