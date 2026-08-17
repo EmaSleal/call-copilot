@@ -102,6 +102,22 @@ class ToolMention:
 
 
 @dataclass
+class PendingAction:
+    """An agent-proposed delete awaiting human approval (D2: agent writes
+    run autonomously, deletes always wait for a human)."""
+    id: Optional[int]
+    actor: str
+    action: str
+    table_name: str
+    row_id: int
+    reason: str = ""
+    status: str = "pending"  # pending | approved | rejected
+    created_at: str = field(default_factory=lambda: datetime.now().isoformat())
+    resolved_at: Optional[str] = None
+    resolved_by: Optional[str] = None
+
+
+@dataclass
 class UnifiedSegment:
     """Read-only row from the `unified_segments` view (video + call, same categories)."""
     id: int
@@ -199,6 +215,19 @@ def init_db() -> None:
             row_id      INTEGER NOT NULL,
             details     TEXT,
             created_at  TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS pending_actions (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            actor       TEXT NOT NULL,
+            action      TEXT NOT NULL,
+            table_name  TEXT NOT NULL,
+            row_id      INTEGER NOT NULL,
+            reason      TEXT NOT NULL DEFAULT '',
+            status      TEXT NOT NULL DEFAULT 'pending',
+            created_at  TEXT NOT NULL,
+            resolved_at TEXT,
+            resolved_by TEXT
         );
         """)
         _seed_categories(conn)
@@ -736,6 +765,47 @@ def delete_tool_mention(mention_id: int, actor: str = "human") -> None:
             (datetime.now().isoformat(), mention_id),
         )
         _write_audit_log(conn, actor, "delete_tool_mention", "tool_mentions", mention_id)
+
+
+# ─────────────────────────────────────────────────────────────
+# DAOs — Pending Actions (agent-proposed deletes awaiting human approval)
+# ─────────────────────────────────────────────────────────────
+
+def create_pending_action(
+    actor: str, action: str, table_name: str, row_id: int, reason: str = ""
+) -> PendingAction:
+    pa = PendingAction(
+        id=None, actor=actor, action=action, table_name=table_name, row_id=row_id, reason=reason
+    )
+    with _conn() as conn:
+        cur = conn.execute(
+            """INSERT INTO pending_actions
+               (actor, action, table_name, row_id, reason, status, created_at)
+               VALUES (?,?,?,?,?,?,?)""",
+            (pa.actor, pa.action, pa.table_name, pa.row_id, pa.reason, pa.status, pa.created_at)
+        )
+        pa.id = cur.lastrowid
+    return pa
+
+
+def get_pending_actions(status: str = "pending") -> list[PendingAction]:
+    with _conn() as conn:
+        rows = conn.execute(
+            "SELECT * FROM pending_actions WHERE status=? ORDER BY created_at", (status,)
+        ).fetchall()
+    return [PendingAction(**dict(r)) for r in rows]
+
+
+def resolve_pending_action(pending_id: int, status: str, resolved_by: str) -> None:
+    """`status` is the caller's decision: "approved" or "rejected". Only
+    updates bookkeeping — actually executing an approved delete is the
+    command layer's job (src.agent.commands), since only it knows how to
+    map an action name back to the real DAO delete function."""
+    with _conn() as conn:
+        conn.execute(
+            "UPDATE pending_actions SET status=?, resolved_at=?, resolved_by=? WHERE id=?",
+            (status, datetime.now().isoformat(), resolved_by, pending_id),
+        )
 
 
 # ─────────────────────────────────────────────────────────────
