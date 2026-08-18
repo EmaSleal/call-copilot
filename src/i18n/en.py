@@ -39,7 +39,7 @@ EN_STRINGS: dict[str, str] = {
     "app.search_binding": "Search",
     "app.categories_binding": "Categories",
     "app.historial_binding": "History",
-    "app.pending_binding": "Pending",
+    "app.pending_binding": "Approvals",
     "app.settings_binding": "Settings",
 
     # call.py — CallCopilotTab
@@ -143,7 +143,7 @@ EN_STRINGS: dict[str, str] = {
     "tools.no_results": "No results for «{query}».",
 
     # pending_actions.py — PendingActionsTab
-    "pending_actions.tab_title": "⏳ Pending",
+    "pending_actions.tab_title": "⏳ Approvals",
     "pending_actions.description_label": "Actions proposed by the agent, awaiting approval:",
     "pending_actions.column_id": "ID",
     "pending_actions.column_action": "Action",

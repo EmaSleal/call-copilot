@@ -1,4 +1,4 @@
-"""Tab 7: Pendientes — revisar y aprobar/rechazar deletes propuestos por el
+"""Tab 7: Aprobaciones — revisar y aprobar/rechazar deletes propuestos por el
 agente de mantenimiento del catálogo (src.agent.maintenance). D2: el
 agente escribe de forma autónoma, pero un delete siempre espera a un
 humano — esta tab es ese punto de aprobación."""

@@ -33,7 +33,7 @@ Siete tabs, todas sobre la misma base de datos:
 | **[4] Categorías** | CRUD de la taxonomía compartida entre video y llamadas — un nivel de subcategorías (`└─`), color por categoría. |
 | **[5] Historial** | Sesiones de video y de llamada unificadas (vista `unified_sessions`/`unified_segments` en SQLite), con columna de origen. |
 | **[6] Tools** | Catálogo de tecnologías/herramientas mencionadas en las llamadas, extraídas automáticamente post-sesión (`src/processing/tool_extractor.py`). Lista todo por default; búsqueda semántica (RAG) si hay `OPENAI_API_KEY` configurada. |
-| **[7] Pendientes** | Deletes propuestos por el agente de mantenimiento del catálogo (`src/agent/maintenance.py`), a la espera de aprobación humana — el agente escribe solo, pero nunca borra sin que vos lo confirmes acá. |
+| **[7] Aprobaciones** | Deletes propuestos por el agente de mantenimiento del catálogo (`src/agent/maintenance.py`), a la espera de aprobación humana — el agente escribe solo, pero nunca borra sin que vos lo confirmes acá. |
 
 `Ctrl+S` abre el panel de **Configuración** (modal) desde cualquier tab:
 idioma de la interfaz (Español/English, cambia en caliente sin reiniciar),
@@ -174,7 +174,7 @@ taxonomía realmente compartida entre video y llamadas; `video_sessions` y
 alimentan el tab Tools — un tool mencionado en varias llamadas es una sola
 fila en `tools` con una `tool_mention` por cada mención (nunca se pisa el
 enriquecimiento del LLM). `pending_actions`/`audit_log` respaldan el tab
-Pendientes — cada delete que el agente de mantenimiento propone queda
+Aprobaciones — cada delete que el agente de mantenimiento propone queda
 encolado ahí hasta que un humano lo aprueba o rechaza.
 
 ## Pendiente / próximos pasos

@@ -9,7 +9,7 @@ Tabs:
   [4] Categorías     — CRUD de taxonomía
   [5] Historial      — navegar sesiones de llamada pasadas e ideas extraídas
   [6] Tools          — catálogo de tecnologías detectadas en las llamadas
-  [7] Pendientes     — aprobar/rechazar deletes propuestos por el agente
+  [7] Aprobaciones   — aprobar/rechazar deletes propuestos por el agente
 
 Este módulo es solo el shell de la app (UnifiedApp) y el entrypoint. Cada
 tab/screen vive en su propio módulo bajo tabs/ y screens/ — ver ahí por la
