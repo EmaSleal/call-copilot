@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.2](https://github.com/EmaSleal/call-copilot/compare/v0.6.1...v0.6.2) (2026-08-18)
+
+
+### Documentation
+
+* refresh promo banner with newer TUI features ([4d92af9](https://github.com/EmaSleal/call-copilot/commit/4d92af91284f9920ecb079b9770de773e0113bc6))
+
 ## [0.6.1](https://github.com/EmaSleal/call-copilot/compare/v0.6.0...v0.6.1) (2026-08-17)
 
 
