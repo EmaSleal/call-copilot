@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.7.0](https://github.com/EmaSleal/call-copilot/compare/v0.6.2...v0.7.0) (2026-08-19)
+
+
+### Features
+
+* **mcp:** add read-only content search queries for the MCP server ([c27a7ad](https://github.com/EmaSleal/call-copilot/commit/c27a7ad3accc4457ed6061f0cdbfc1c7aa45c9c7))
+* **mcp:** add read-only content search queries for the MCP server ([64d9f01](https://github.com/EmaSleal/call-copilot/commit/64d9f0155ac6a6b44515d5656e64a7aeed24fc1d))
+
 ## [0.6.2](https://github.com/EmaSleal/call-copilot/compare/v0.6.1...v0.6.2) (2026-08-18)
 
 
