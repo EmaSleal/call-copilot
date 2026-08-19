@@ -49,6 +49,12 @@ video = ["yt-dlp>=2024.1.0", "openai-whisper>=20231117", "imageio-ffmpeg>=0.5.0"
 # — the app runs fine without it, those features just no-op (category dedup
 # falls back to the LLM-judge path, see src/processing/category_dedup.py).
 rag = ["chromadb>=0.5.0"]
+# Read-only MCP server (src/mcp/) exposing session/category/tools/content
+# data to MCP clients (e.g. Claude Desktop) via the `call-copilot-mcp`
+# console script. Only src/mcp/server.py imports this — src/mcp/queries.py
+# and src/mcp/tools.py stay MCP-SDK-free so the pure query/handler logic is
+# importable and testable without this extra installed.
+mcp = ["mcp>=1.0.0"]
 # Named profile bundling every extra above. Listed directly (not as a
 # self-referential "call-copilot[...]" extra) so it resolves the same way
 # for a git install as it does once/if this is ever published to PyPI.
@@ -58,10 +64,12 @@ full = [
     "openai-whisper>=20231117",
     "imageio-ffmpeg>=0.5.0",
     "chromadb>=0.5.0",
+    "mcp>=1.0.0",
 ]
 
 [project.scripts]
 call-copilot = "src.tui.app:main"
+call-copilot-mcp = "src.mcp.server:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src"]
