@@ -15,7 +15,7 @@ Two styles, matching the existing tests/mcp/test_queries.py conventions:
 
 import asyncio
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -114,6 +114,31 @@ class TestListToolsCatalogTool:
 
         # substring "re" matches "Redis" and "PostgreSQL" (case-insensitive), not "RabbitMQ"
         assert {r["name"] for r in results} == {"Redis", "PostgreSQL"}
+
+
+class TestSemanticSearchTool:
+    def test_semantic_search_empty_without_openai_key(self, monkeypatch):
+        """Spec: Graceful RAG degradation — missing OPENAI_API_KEY scenario.
+        Mocks `SegmentsSearchStore` (same boundary
+        `tests/unit/test_search_indexer.py` already mocks at) so the test
+        stays fast/deterministic with no real chromadb/network calls, while
+        still exercising the real `_build_openai_client()` no-key path: the
+        assertion on `openai_client=None` proves the empty result comes from
+        the real missing-key branch, not a separately mocked shortcut."""
+        from src.processing import search_indexer
+        from src.mcp import tools
+
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+
+        mock_store = MagicMock()
+        mock_store.search = AsyncMock(return_value=[])
+        mock_store_cls = MagicMock(return_value=mock_store)
+
+        with patch.object(search_indexer, "SegmentsSearchStore", mock_store_cls):
+            result = asyncio.run(tools.semantic_search("Redis"))
+
+        assert result == []
+        mock_store_cls.assert_called_once_with(openai_client=None)
 
 
 class TestGetSessionTool:

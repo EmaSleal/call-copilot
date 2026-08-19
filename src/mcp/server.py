@@ -70,6 +70,18 @@ def build_server():
             "together with all of its segments in one call."
         ),
     )
+    server.add_tool(
+        tools.semantic_search,
+        name="semantic_search",
+        description=(
+            "Semantic (embedding-based) search across video and call "
+            "segments. Optional and best-effort: it MAY return an empty "
+            "list if this server's environment has no OPENAI_API_KEY or "
+            "chromadb installed — an empty result does not mean the "
+            "server is broken, it means semantic search is unavailable; "
+            "use search_content for guaranteed full-text results."
+        ),
+    )
     return server
 
 

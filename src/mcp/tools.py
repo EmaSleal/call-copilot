@@ -19,6 +19,7 @@ from typing import Optional
 
 from src.db import database
 from src.mcp import queries as mcp_queries
+from src.processing.search_indexer import search_segments_semantic
 
 
 async def search_content(
@@ -86,3 +87,17 @@ async def get_session(session_id: int, source: str) -> dict:
     Returns `{"session": None, "segments": []}` for an unknown id+source
     pair rather than raising."""
     return await asyncio.to_thread(_get_session_sync, session_id, source)
+
+
+async def semantic_search(query: str, top_k: int = 5) -> list[dict]:
+    """Semantic search across video AND call segments (spec: Graceful RAG
+    degradation). Thin wrapper around
+    `src.processing.search_indexer.search_segments_semantic` — same
+    instantiation the TUI's search tab (`src/tui/tabs/search.py`) already
+    uses — which itself wraps `SegmentsSearchStore.search()`
+    (`src/rag/segments_store.py`) unchanged. Returns `[]` rather than
+    raising when `chromadb` or `OPENAI_API_KEY` are unavailable: that no-op
+    behavior already lives in `ChromaEmbeddingStore.__init__`/`.search()`
+    (`src/rag/base.py`), so no extra try/except is added here — one would
+    only risk masking a real bug."""
+    return await search_segments_semantic(query, top_k=top_k)

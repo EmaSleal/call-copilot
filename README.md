@@ -177,6 +177,49 @@ enriquecimiento del LLM). `pending_actions`/`audit_log` respaldan el tab
 Aprobaciones — cada delete que el agente de mantenimiento propone queda
 encolado ahí hasta que un humano lo aprueba o rechaza.
 
+## Servidor MCP
+
+`call-copilot-mcp` es un servidor [MCP](https://modelcontextprotocol.io)
+de solo lectura (stdio) que expone los datos guardados por call-copilot —
+historial de sesiones, categorías, catálogo de Tools y búsqueda de
+contenido — a un cliente MCP externo (por ejemplo Claude Desktop), sin
+tocar la TUI. Es un proceso separado y liviano: no importa `src.tui.*` ni
+arrastra Textual.
+
+Instalación (mismo patrón que los extras `whisper-local,video,rag` de más
+arriba):
+
+```bash
+pipx install "call-copilot[mcp] @ git+https://github.com/EmaSleal/call-copilot.git@main"
+```
+
+Tools que expone:
+
+| Tool | Qué hace |
+|---|---|
+| `search_content` | búsqueda combinable sobre segmentos de video/llamadas (`category_id`, `technology`, `title_query`, `text_query`, `source`), siempre acotada por `limit`/`offset` |
+| `list_categories` | taxonomía completa de categorías y subcategorías |
+| `list_tools_catalog` | catálogo de Tools, con filtro opcional por substring |
+| `get_session` | una sesión (video o llamada) más todos sus segmentos, en un solo llamado |
+| `semantic_search` | búsqueda semántica (embeddings) sobre segmentos de video y llamadas — best-effort, ver limitación abajo |
+
+Limitación conocida — `technology` en video: para llamadas, `technology`
+resuelve contra el catálogo curado `tools`/`tool_mentions`. Para video, hoy
+no existe esa data curada, así que el mismo filtro cae a un simple match de
+substring (case-insensitive) contra el texto del segmento — menos preciso
+que el match curado de llamadas, pero no requiere cambios de esquema.
+
+`semantic_search` depende de `chromadb` y `OPENAI_API_KEY`; si cualquiera
+de los dos falta en el entorno del servidor, devuelve una lista vacía en
+vez de fallar — un resultado vacío no significa que el servidor esté roto,
+solo que la búsqueda semántica no está disponible (usá `search_content`
+para resultados garantizados).
+
+Al ser un proceso stdio separado, no hereda el entorno de la TUI: necesita
+las mismas variables de entorno que lee la TUI (mismo `.env`, vía
+`load_dotenv()`) — típicamente ninguna es estrictamente obligatoria salvo
+`OPENAI_API_KEY` si querés `semantic_search` funcionando.
+
 ## Pendiente / próximos pasos
 
 1. **Captura de pestaña de navegador (`tabCapture`)** — no implementada.
