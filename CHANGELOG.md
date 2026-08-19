@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.0](https://github.com/EmaSleal/call-copilot/compare/v0.7.0...v0.8.0) (2026-08-19)
+
+
+### Features
+
+* **mcp:** land the read-only MCP server stack on main ([c6dddb7](https://github.com/EmaSleal/call-copilot/commit/c6dddb7c358742eee18db2af6b89dda9de549602))
+
 ## [0.7.0](https://github.com/EmaSleal/call-copilot/compare/v0.6.2...v0.7.0) (2026-08-19)
 
 
