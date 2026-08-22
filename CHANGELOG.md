@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.9.0](https://github.com/EmaSleal/call-copilot/compare/v0.8.0...v0.9.0) (2026-08-22)
+
+
+### Features
+
+* **cli:** add call-copilot install-mcp command ([943734e](https://github.com/EmaSleal/call-copilot/commit/943734eedb04b579770e893e4f0c53d077e60e35))
+
+
+### Bug Fixes
+
+* **ci:** install mcp for the MCP server integration test ([fbc6ab2](https://github.com/EmaSleal/call-copilot/commit/fbc6ab271c9de8da88c27f5f4f8912e131f9167b))
+
+
+### Documentation
+
+* add CI/release badges and document the catalog maintenance agent ([ab130eb](https://github.com/EmaSleal/call-copilot/commit/ab130ebf2ee8847df69bb55324192dbf2dc1ee9f))
+
 ## [0.8.0](https://github.com/EmaSleal/call-copilot/compare/v0.7.0...v0.8.0) (2026-08-19)
 
 
