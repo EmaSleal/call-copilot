@@ -20,6 +20,7 @@ from src.core.updater import (
     read_install_profile,
     run_check_update,
     run_doctor,
+    run_install_mcp,
     run_uninstall,
     run_update,
     run_version,
@@ -428,6 +429,87 @@ class TestRunUninstall:
         monkeypatch.setattr("src.core.updater.subprocess.run", mock_run)
 
         assert run_uninstall() == 0
+
+
+# ─────────────────────────────────────────────────────────────
+# run_install_mcp()
+# ─────────────────────────────────────────────────────────────
+
+class TestRunInstallMcp:
+    """`call-copilot install-mcp` — adds the `mcp` extra without a full
+    reinstall. Persisting it into the install-profile matters: run_update()
+    rebuilds its pip spec from that same file, so skipping the persist
+    would silently drop the extra on the next `call-copilot update`."""
+
+    def test_dev_checkout_pip_installs_into_current_venv(self, monkeypatch):
+        monkeypatch.setattr("src.core.updater._is_dev_checkout", lambda: True)
+        mock_run = MagicMock(return_value=MagicMock(returncode=0))
+        monkeypatch.setattr("src.core.updater.subprocess.run", mock_run)
+
+        assert run_install_mcp() == 0
+        args = mock_run.call_args[0][0]
+        assert args[1:] == ["-m", "pip", "install", "mcp>=1.0.0"]
+
+    def test_dev_checkout_propagates_pip_failure(self, monkeypatch):
+        monkeypatch.setattr("src.core.updater._is_dev_checkout", lambda: True)
+        mock_run = MagicMock(return_value=MagicMock(returncode=1))
+        monkeypatch.setattr("src.core.updater.subprocess.run", mock_run)
+
+        assert run_install_mcp() == 1
+
+    def test_pipx_install_injects_and_persists_profile(self, monkeypatch, tmp_path):
+        monkeypatch.setattr("src.core.updater._is_dev_checkout", lambda: False)
+        profile_file = tmp_path / "install-profile"
+        profile_file.write_text("rag")
+        monkeypatch.setattr("src.core.updater._profile_path", lambda: profile_file)
+        mock_run = MagicMock(return_value=MagicMock(returncode=0))
+        monkeypatch.setattr("src.core.updater.subprocess.run", mock_run)
+
+        assert run_install_mcp() == 0
+        mock_run.assert_called_once_with(["pipx", "inject", "call-copilot", "mcp>=1.0.0"])
+        assert profile_file.read_text() == "rag,mcp"
+
+    def test_pipx_install_persists_profile_when_none_existed(self, monkeypatch, tmp_path):
+        monkeypatch.setattr("src.core.updater._is_dev_checkout", lambda: False)
+        profile_file = tmp_path / "install-profile"
+        monkeypatch.setattr("src.core.updater._profile_path", lambda: profile_file)
+        mock_run = MagicMock(return_value=MagicMock(returncode=0))
+        monkeypatch.setattr("src.core.updater.subprocess.run", mock_run)
+
+        assert run_install_mcp() == 0
+        assert profile_file.read_text() == "mcp"
+
+    def test_already_in_profile_is_not_duplicated(self, monkeypatch, tmp_path):
+        monkeypatch.setattr("src.core.updater._is_dev_checkout", lambda: False)
+        profile_file = tmp_path / "install-profile"
+        profile_file.write_text("rag,mcp")
+        monkeypatch.setattr("src.core.updater._profile_path", lambda: profile_file)
+        mock_run = MagicMock(return_value=MagicMock(returncode=0))
+        monkeypatch.setattr("src.core.updater.subprocess.run", mock_run)
+
+        assert run_install_mcp() == 0
+        assert profile_file.read_text() == "rag,mcp"
+
+    def test_pipx_failure_does_not_touch_profile(self, monkeypatch, tmp_path):
+        monkeypatch.setattr("src.core.updater._is_dev_checkout", lambda: False)
+        profile_file = tmp_path / "install-profile"
+        profile_file.write_text("rag")
+        monkeypatch.setattr("src.core.updater._profile_path", lambda: profile_file)
+        mock_run = MagicMock(return_value=MagicMock(returncode=1))
+        monkeypatch.setattr("src.core.updater.subprocess.run", mock_run)
+
+        assert run_install_mcp() == 1
+        assert profile_file.read_text() == "rag"
+
+    def test_missing_pipx_returns_nonzero_without_raising(self, monkeypatch):
+        monkeypatch.setattr("src.core.updater._is_dev_checkout", lambda: False)
+
+        def _raise(*a, **k):
+            raise FileNotFoundError()
+
+        monkeypatch.setattr("src.core.updater.subprocess.run", _raise)
+
+        assert run_install_mcp() == 1
 
 
 # ─────────────────────────────────────────────────────────────

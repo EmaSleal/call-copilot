@@ -23,6 +23,7 @@ class TestDispatch:
         ("version", "run_version"),
         ("uninstall", "run_uninstall"),
         ("doctor", "run_doctor"),
+        ("install-mcp", "run_install_mcp"),
     ])
     def test_known_commands_dispatch_to_updater(self, monkeypatch, command, target):
         mock_fn = MagicMock(return_value=0)
@@ -54,7 +55,7 @@ class TestRunHelp:
     def test_lists_every_known_command(self, capsys):
         run_help()
         out = capsys.readouterr().out
-        for command in ("update", "check-update", "version", "uninstall", "doctor", "help"):
+        for command in ("update", "check-update", "version", "uninstall", "doctor", "install-mcp", "help"):
             assert command in out
 
     def test_returns_zero(self):

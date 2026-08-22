@@ -132,6 +132,7 @@ pipx install "call-copilot[whisper-local,video,rag] @ git+https://github.com/Ema
 | `call-copilot check-update` | avisa si hay una versión nueva, sin instalarla |
 | `call-copilot update` | instala la última versión |
 | `call-copilot doctor` | diagnóstico: pipx, Python, extras opcionales, GPU/CUDA |
+| `call-copilot install-mcp` | agrega el extra `mcp` (servidor MCP de solo lectura) a una instalación existente |
 | `call-copilot uninstall` | desinstala (config/datos en `~/.call-copilot` quedan) |
 
 ## Setup (desde el repo, para desarrollo)
@@ -186,8 +187,18 @@ contenido — a un cliente MCP externo (por ejemplo Claude Desktop), sin
 tocar la TUI. Es un proceso separado y liviano: no importa `src.tui.*` ni
 arrastra Textual.
 
-Instalación (mismo patrón que los extras `whisper-local,video,rag` de más
-arriba):
+Si ya tenés call-copilot instalado, la forma más simple es:
+
+```bash
+call-copilot install-mcp
+```
+
+Inyecta el extra en la instalación existente (`pipx inject`) y lo agrega
+al perfil guardado en `~/.call-copilot/install-profile`, para que
+`call-copilot update` no lo pise en la próxima actualización.
+
+También instalable desde cero, mismo patrón que los extras
+`whisper-local,video,rag` de más arriba:
 
 ```bash
 pipx install "call-copilot[mcp] @ git+https://github.com/EmaSleal/call-copilot.git@main"

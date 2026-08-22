@@ -11,6 +11,7 @@ _COMMANDS = {
     "version": (lambda: updater.run_version(), "versión y commit instalado"),
     "uninstall": (lambda: updater.run_uninstall(), "desinstala (config/datos en ~/.call-copilot quedan)"),
     "doctor": (lambda: updater.run_doctor(), "diagnóstico: pipx, Python, extras, GPU"),
+    "install-mcp": (lambda: updater.run_install_mcp(), "instala el extra 'mcp' (servidor MCP de solo lectura)"),
 }
 
 _HELP_ALIASES = ("help", "--help", "-h")

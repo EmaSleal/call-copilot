@@ -195,6 +195,49 @@ def run_uninstall() -> int:
     return result.returncode
 
 
+def run_install_mcp() -> int:
+    """Adds the `mcp` extra (the read-only MCP server, `call-copilot-mcp`)
+    to an existing install without a full reinstall.
+
+    Dev checkout: `pip install` straight into the current venv — there's
+    no pipx package to inject into.
+
+    Installed (pipx): `pipx inject` adds it to the existing venv, then the
+    extra is persisted into the install-profile file so a later
+    `call-copilot update` (which rebuilds its pip spec from that same
+    file via read_install_profile()) doesn't silently drop it.
+    """
+    if _is_dev_checkout():
+        import sys
+        print("Dev checkout detectado — instalando 'mcp' en el venv actual...")
+        try:
+            result = subprocess.run([sys.executable, "-m", "pip", "install", "mcp>=1.0.0"])
+        except FileNotFoundError:
+            print("pip no está disponible.")
+            return 1
+        if result.returncode == 0:
+            print("Listo — corré 'call-copilot-mcp' para arrancar el servidor MCP.")
+        return result.returncode
+
+    print("Instalando el extra 'mcp' sobre el call-copilot ya instalado...")
+    try:
+        result = subprocess.run(["pipx", "inject", "call-copilot", "mcp>=1.0.0"])
+    except FileNotFoundError:
+        print("pipx no está instalado.")
+        return 1
+    if result.returncode != 0:
+        return result.returncode
+
+    extras = [e for e in read_install_profile().split(",") if e]
+    if "mcp" not in extras:
+        extras.append("mcp")
+        _profile_path().write_text(",".join(extras), encoding="utf-8")
+
+    print("\nListo — 'call-copilot-mcp' ya está disponible como comando.")
+    print("Configurá tu cliente MCP (ej. Claude Desktop) para lanzarlo como servidor stdio.")
+    return 0
+
+
 def _pipx_version() -> str | None:
     try:
         result = subprocess.run(
