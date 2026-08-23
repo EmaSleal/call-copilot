@@ -12,6 +12,8 @@ process a client like Claude Desktop can launch on demand, not pull in
 Textual.
 """
 
+import os
+
 from dotenv import load_dotenv
 
 from src.mcp import tools
@@ -101,6 +103,30 @@ def build_server():
             "use search_content for guaranteed full-text results."
         ),
     )
+    # The server's one write surface — off by default. Approving/rejecting
+    # only resolves a delete a human/agent already queued via
+    # src/agent/commands.py (categories/tools catalog); it can never
+    # originate a new delete. Set MCP_ALLOW_APPROVALS=true to opt in.
+    if os.getenv("MCP_ALLOW_APPROVALS", "false").lower() == "true":
+        server.add_tool(
+            tools.approve_pending_action,
+            name="approve_pending_action",
+            description=(
+                "Approve an agent-proposed pending delete (queued by "
+                "call-copilot's own catalog-maintenance loop) and run it. "
+                "Returns {'ok': False, 'error': ...} for an unknown or "
+                "already-resolved pending_id instead of raising."
+            ),
+        )
+        server.add_tool(
+            tools.reject_pending_action,
+            name="reject_pending_action",
+            description=(
+                "Reject an agent-proposed pending delete without running "
+                "it. Returns {'ok': False, 'error': ...} for an unknown or "
+                "already-resolved pending_id instead of raising."
+            ),
+        )
     return server
 
 

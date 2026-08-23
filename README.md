@@ -246,6 +246,17 @@ las mismas variables de entorno que lee la TUI (mismo `.env`, vía
 `load_dotenv()`) — típicamente ninguna es estrictamente obligatoria salvo
 `OPENAI_API_KEY` si querés `semantic_search` funcionando.
  
+`approve_pending_action` / `reject_pending_action` — única superficie de
+escritura del servidor, **apagada por default**. Resuelven un pending
+delete que el propio loop de mantención del catálogo (agente interno,
+`src/agent/commands.py`) ya encoló para aprobación humana; nunca originan
+un delete nuevo. Se activan con `MCP_ALLOW_APPROVALS=true` en el entorno
+del proceso `call-copilot-mcp` — sin esa variable, ni siquiera aparecen en
+`list_tools`, así que un cliente no puede ni descubrirlas. Importante: un
+cliente MCP (Claude Desktop incluido) **no hereda el entorno del shell**
+al lanzar el proceso — la variable tiene que ir en el `env` de la config
+del cliente, no alcanza con exportarla en la terminal.
+ 
 ## Pendiente / próximos pasos
  
 1. **Captura de pestaña de navegador (`tabCapture`)** — no implementada.

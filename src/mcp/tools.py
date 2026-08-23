@@ -18,6 +18,7 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Optional
 
+from src.agent import commands as agent_commands
 from src.db import database
 from src.mcp import queries as mcp_queries
 from src.processing.search_indexer import search_segments_semantic
@@ -67,6 +68,49 @@ async def list_tools_catalog(name_query: Optional[str] = None) -> list[dict]:
         needle = name_query.strip().lower()
         results = [r for r in results if needle in r["name"].lower()]
     return results
+
+
+def _find_pending(pending_id: int):
+    return next(
+        (p for p in database.get_pending_actions(status="pending") if p.id == pending_id),
+        None,
+    )
+
+
+async def approve_pending_action(pending_id: int, resolved_by: str = "mcp-client") -> dict:
+    """Approve an agent-proposed pending delete (queued by call-copilot's
+    own catalog-maintenance loop, `src/agent/commands.py::execute`) and run
+    it. This is the one write surface on an otherwise read-only server —
+    only registered on `build_server()` when `MCP_ALLOW_APPROVALS=true`
+    (off by default). `resolved_by` defaults to "mcp-client" rather than
+    "human" so `pending_actions.resolved_by` stays a truthful audit trail
+    of *how* it was approved. Returns `{"ok": False, "error": ...}` for an
+    unknown/already-resolved `pending_id` instead of letting
+    `commands.approve_pending_action`'s `ValueError` cross the MCP
+    boundary as a raw protocol-level failure."""
+    def _sync() -> dict:
+        try:
+            agent_commands.approve_pending_action(pending_id, resolved_by=resolved_by)
+            return {"ok": True}
+        except (ValueError, KeyError) as e:
+            return {"ok": False, "error": str(e)}
+
+    return await asyncio.to_thread(_sync)
+
+
+async def reject_pending_action(pending_id: int, resolved_by: str = "mcp-client") -> dict:
+    """Reject an agent-proposed pending delete without running it. Same
+    gating as `approve_pending_action`. Explicitly checks the id exists
+    among `status="pending"` rows first — `db.resolve_pending_action`
+    silently no-ops (an UPDATE matching zero rows) on an unknown id, which
+    would otherwise read as a false-positive `{"ok": True}` to the caller."""
+    def _sync() -> dict:
+        if _find_pending(pending_id) is None:
+            return {"ok": False, "error": f"no pending action with id {pending_id}"}
+        agent_commands.reject_pending_action(pending_id, resolved_by=resolved_by)
+        return {"ok": True}
+
+    return await asyncio.to_thread(_sync)
 
 
 def _report_url(html_report: Optional[str]) -> Optional[str]:

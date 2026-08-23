@@ -13,7 +13,10 @@ import asyncio
 
 
 class TestServerToolRegistration:
-    def test_server_lists_read_only_tools(self):
+    def test_server_lists_read_only_tools_by_default(self, monkeypatch):
+        """MCP_ALLOW_APPROVALS is off by default — approve/reject_pending_action
+        (the server's one write surface) must not even be discoverable."""
+        monkeypatch.delenv("MCP_ALLOW_APPROVALS", raising=False)
         from src.mcp.server import build_server
 
         server = build_server()
@@ -29,3 +32,25 @@ class TestServerToolRegistration:
             "list_reports",
             "get_report_url",
         }
+
+    def test_server_adds_approval_tools_when_explicitly_enabled(self, monkeypatch):
+        monkeypatch.setenv("MCP_ALLOW_APPROVALS", "true")
+        from src.mcp.server import build_server
+
+        server = build_server()
+        registered = asyncio.run(server.list_tools())
+        names = {tool.name for tool in registered}
+
+        assert "approve_pending_action" in names
+        assert "reject_pending_action" in names
+
+    def test_server_keeps_approval_tools_off_for_any_other_value(self, monkeypatch):
+        monkeypatch.setenv("MCP_ALLOW_APPROVALS", "1")
+        from src.mcp.server import build_server
+
+        server = build_server()
+        registered = asyncio.run(server.list_tools())
+        names = {tool.name for tool in registered}
+
+        assert "approve_pending_action" not in names
+        assert "reject_pending_action" not in names
