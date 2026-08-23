@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.9.1](https://github.com/EmaSleal/call-copilot/compare/v0.9.0...v0.9.1) (2026-08-23)
+
+
+### Bug Fixes
+
+* **paths:** resolve app_home() to the absolute repo root, not cwd-relative ([1a5d9b4](https://github.com/EmaSleal/call-copilot/commit/1a5d9b4483426fc1bc87e6a845ac8696921661fd))
+* **paths:** resolve app_home() to the absolute repo root, not cwd-relative ([de8b6ec](https://github.com/EmaSleal/call-copilot/commit/de8b6ecb7d73155a7f982c64578df93a33091f4e))
+
 ## [0.9.0](https://github.com/EmaSleal/call-copilot/compare/v0.8.0...v0.9.0) (2026-08-22)
 
 
