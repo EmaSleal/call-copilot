@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.10.1](https://github.com/EmaSleal/call-copilot/compare/v0.10.0...v0.10.1) (2026-08-23)
+
+
+### Bug Fixes
+
+* **tui:** move Save button below the MCP toggles, not above them ([f81cbca](https://github.com/EmaSleal/call-copilot/commit/f81cbca21eb11e9feff5c6b1bf4ca52b156ee8b0))
+* **tui:** move Save button below the MCP toggles, not above them ([cdc9e9b](https://github.com/EmaSleal/call-copilot/commit/cdc9e9b8f6814cf96a95d782f2b10bf821ea9dff))
+
 ## [0.10.0](https://github.com/EmaSleal/call-copilot/compare/v0.9.2...v0.10.0) (2026-08-23)
 
 
