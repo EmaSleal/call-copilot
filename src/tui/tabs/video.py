@@ -2,6 +2,8 @@
 
 import asyncio
 import shutil
+import webbrowser
+from pathlib import Path
 
 from textual.app import ComposeResult
 from textual.containers import Horizontal
@@ -121,6 +123,7 @@ class VideoTab(TabPane):
                         session.url,
                         session.created_at[:16],
                         n_segs,
+                        has_report=bool(session.html_report),
                     ),
                     self._on_modal_action,
                 )
@@ -131,6 +134,14 @@ class VideoTab(TabPane):
             return
         if action == "analyze":
             asyncio.create_task(self._analyze_others(sid))
+        elif action == "open_report":
+            session, _ = self._sessions_cache.get(sid, (None, 0))
+            if session and session.html_report:
+                report_path = Path(session.html_report)
+                if report_path.exists():
+                    webbrowser.open(report_path.resolve().as_uri())
+        elif action == "export_zip":
+            self._export_report_zip(sid)
         elif action == "delete":
             from src.processing.search_indexer import forget_segment_embeddings
             from src.video.pipeline import OUTPUT_DIR
@@ -183,6 +194,21 @@ class VideoTab(TabPane):
             btn.disabled = False
             btn.label = t("video.process_button")
             self._refresh_sessions()
+
+    def _export_report_zip(self, session_id: int) -> None:
+        from src.video.report import export_report_zip
+
+        status_lbl = self.query_one("#video-status", Label)
+        session, _ = self._sessions_cache.get(session_id, (None, 0))
+        if not session or not session.html_report:
+            return
+        try:
+            zip_path = export_report_zip(Path(session.html_report).parent)
+            status_lbl.update(
+                f"[green]{t('video.export_zip_ok', path=zip_path)}[/green]"
+            )
+        except FileNotFoundError as e:
+            status_lbl.update(f"[red]{t('video.export_zip_error', error=e)}[/red]")
 
     async def _analyze_others(self, session_id: int) -> None:
         from src.video.classifier import suggest_new_categories

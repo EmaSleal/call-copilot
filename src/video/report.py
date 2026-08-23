@@ -4,7 +4,9 @@ Incluye: segmentos con timestamps, keyframes, badge de categoría con color,
 y buscador JS del lado del cliente (sin dependencias externas).
 """
 
+import zipfile
 from pathlib import Path
+
 from src.db.database import Category, Segment, VideoSession
 
 
@@ -15,6 +17,10 @@ def generate_html_report(
     out_dir: Path,
 ) -> Path:
     cat_map = {c.id: c for c in categories}
+
+    video_html = ""
+    if (out_dir / "video.mp4").exists():
+        video_html = '<video src="video.mp4" controls class="player"></video>'
 
     seg_html = ""
     for seg in segments:
@@ -59,6 +65,7 @@ def generate_html_report(
   .segment{{display:flex;gap:1rem;background:#1e293b;border-radius:.75rem;
             padding:1rem;margin-bottom:1rem;border:1px solid #334155}}
   .frame{{width:160px;height:90px;object-fit:cover;border-radius:.5rem;flex-shrink:0}}
+  .player{{width:100%;max-width:640px;border-radius:.75rem;margin-bottom:1.5rem;display:block}}
   .seg-body{{flex:1}}
   .seg-meta{{display:flex;align-items:center;gap:.75rem;margin-bottom:.5rem}}
   .ts{{font-size:.78rem;color:#64748b;font-family:monospace}}
@@ -70,6 +77,7 @@ def generate_html_report(
 <body>
 <h1>{_esc(session.title)}</h1>
 <p class="meta">{session.url} &bull; {len(segments)} segmentos &bull; {session.created_at[:10]}</p>
+{video_html}
 <input id="search" type="text" placeholder="Buscar en la transcripción...">
 <div id="segments">{seg_html}</div>
 <script>
@@ -88,6 +96,28 @@ def generate_html_report(
     report_path = out_dir / "report.html"
     report_path.write_text(html, encoding="utf-8")
     return report_path
+
+
+def export_report_zip(session_dir: Path) -> Path:
+    """Empaqueta report.html + keyframes + video.mp4 (si existe) en un .zip
+    autocontenido para compartir fuera de session_dir. Excluye artefactos
+    internos como audio.mp3 (fuente de transcripción, sin valor para el
+    reporte)."""
+    report_path = session_dir / "report.html"
+    if not report_path.exists():
+        raise FileNotFoundError(f"No existe {report_path}")
+
+    zip_path = session_dir / "report.zip"
+    members = [report_path, *sorted(session_dir.glob("frame_*.jpg"))]
+    video_path = session_dir / "video.mp4"
+    if video_path.exists():
+        members.append(video_path)
+
+    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+        for member in members:
+            zf.write(member, arcname=member.name)
+
+    return zip_path
 
 
 def _fmt_ts(seconds: float) -> str:
