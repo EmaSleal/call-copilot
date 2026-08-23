@@ -31,6 +31,7 @@ from src.core.interfaces import (
     TranscriptSegment,
 )
 from src.output.session_logger import SessionLogger
+from src.processing.live_tool_context import build_live_tool_context, detect_mentioned_tools
 from src.profiles.models import CallProfile, ResponseMode
 from src.profiles.heuristics import compute_conservative_mode, is_silent_mode_question
 from src.llm.model_catalog import provider_of_model_id
@@ -122,6 +123,7 @@ class CallCopilotPipeline:
         self._inactivity_task: Optional[asyncio.Task] = None
         self._inactivity_timeout: float = 2.0
         self._rag: RAGStore | None = None
+        self._known_tools: list = []
         self._current_block: list[str] = []
         self._recent_words: deque[str] = deque(maxlen=300)
         # Captured on start() — used by the TUI to trigger post-session processing.
@@ -140,12 +142,14 @@ class CallCopilotPipeline:
         await self.audio_source.start()
         await self.stt.connect()
 
+        import src.db.database as db
+        self._known_tools = db.get_tools()
+
         if self._openai_client:
             self._rag = RAGStore(
                 session_id=self.session_logger.session_id,
                 openai_client=self._openai_client,
             )
-            import src.db.database as db
             cs = db.create_call_session(
                 context=self.initial_context,
                 transcript_path=str(self.session_logger.file_path),
@@ -256,6 +260,15 @@ class CallCopilotPipeline:
             rag_context = "\n".join(relevant) if relevant else block_text
         else:
             rag_context = block_text
+
+        # Cheap, network-free tool-mention detection (regex against the
+        # catalog's normalized names) — no LLM/embedding call added to the
+        # hot path. See src/processing/live_tool_context.py.
+        mentioned_tools = detect_mentioned_tools(block_text, self._known_tools)
+        if mentioned_tools:
+            tool_context = await asyncio.to_thread(build_live_tool_context, mentioned_tools)
+            if tool_context:
+                rag_context = f"{rag_context}\n\n{tool_context}".strip()
 
         logger.debug("trigger: %d palabras → LLM", word_count)
 
