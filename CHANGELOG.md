@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.9.2](https://github.com/EmaSleal/call-copilot/compare/v0.9.1...v0.9.2) (2026-08-23)
+
+
+### Bug Fixes
+
+* **mcp:** load_dotenv() with the explicit env_store path, not default search ([b3d15df](https://github.com/EmaSleal/call-copilot/commit/b3d15df7124a44ce0aeb96f05fcc45f095942f74))
+* **mcp:** load_dotenv() with the explicit env_store path, not default search ([3a6d832](https://github.com/EmaSleal/call-copilot/commit/3a6d832de58b78e3aed380d1fbe535e8878d76df))
+
 ## [0.9.1](https://github.com/EmaSleal/call-copilot/compare/v0.9.0...v0.9.1) (2026-08-23)
 
 
