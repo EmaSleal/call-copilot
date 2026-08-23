@@ -199,17 +199,6 @@ class SettingsScreen(ModalScreen):
                     id="settings-silence-threshold",
                     value=str(config_defaults.silence_threshold_ms()),
                 )
-                yield Button(t("settings.save_button"), id="btn-settings-save", variant="primary")
-                yield Label(t("settings.tech_scout_path_label"), id="lbl-settings-tech-scout-path")
-                yield Input(
-                    id="settings-tech-scout-path",
-                    value=config_defaults.tech_scout_db_path(),
-                )
-                yield Button(
-                    t("settings.sync_tech_scout_button"),
-                    id="btn-settings-sync-tools",
-                    variant="default",
-                )
                 yield Label(t("settings.mcp_approvals_label"), id="lbl-settings-mcp-approvals")
                 yield Select(
                     [("false", "false"), ("true", "true")],
@@ -224,6 +213,17 @@ class SettingsScreen(ModalScreen):
                     [("false", "false"), ("true", "true")],
                     id="settings-mcp-video-processing",
                     value="true" if config_defaults.mcp_allow_video_processing() else "false",
+                )
+                yield Button(t("settings.save_button"), id="btn-settings-save", variant="primary")
+                yield Label(t("settings.tech_scout_path_label"), id="lbl-settings-tech-scout-path")
+                yield Input(
+                    id="settings-tech-scout-path",
+                    value=config_defaults.tech_scout_db_path(),
+                )
+                yield Button(
+                    t("settings.sync_tech_scout_button"),
+                    id="btn-settings-sync-tools",
+                    variant="default",
                 )
             yield Label("", id="settings-feedback")
 
