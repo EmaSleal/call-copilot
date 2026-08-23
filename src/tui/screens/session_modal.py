@@ -22,13 +22,17 @@ class SessionModal(ModalScreen):
     #modal-actions { height: auto; margin-top: 1; }
     """
 
-    def __init__(self, title: str, status: str, url: str, date: str, n_segs: int):
+    def __init__(
+        self, title: str, status: str, url: str, date: str, n_segs: int,
+        has_report: bool = False,
+    ):
         super().__init__()
         self._title = title
         self._status = status
         self._url = url
         self._date = date
         self._n_segs = n_segs
+        self._has_report = has_report
 
     def compose(self) -> ComposeResult:
         status_color = {"done": "green", "error": "red", "processing": "yellow"}.get(
@@ -43,6 +47,15 @@ class SessionModal(ModalScreen):
             )
             yield Label(self._url[:65], id="modal-meta")
             with Horizontal(id="modal-actions"):
+                if self._has_report:
+                    yield Button(
+                        t("session_modal.open_report_button"),
+                        id="btn-modal-open-report", variant="success",
+                    )
+                    yield Button(
+                        t("session_modal.export_zip_button"),
+                        id="btn-modal-export-zip", variant="success",
+                    )
                 yield Button(
                     t("session_modal.analyze_button"), id="btn-modal-analyze", variant="warning"
                 )
@@ -61,6 +74,13 @@ class SessionModal(ModalScreen):
             f"[{status_color}]{self._status}[/{status_color}]  •  "
             f"{t('session_modal.segments_count', count=self._n_segs)}  •  {self._date}"
         )
+        if self._has_report:
+            self.query_one("#btn-modal-open-report", Button).label = t(
+                "session_modal.open_report_button"
+            )
+            self.query_one("#btn-modal-export-zip", Button).label = t(
+                "session_modal.export_zip_button"
+            )
         self.query_one("#btn-modal-analyze", Button).label = t("session_modal.analyze_button")
         self.query_one("#btn-modal-reprocess", Button).label = t("session_modal.reprocess_button")
         self.query_one("#btn-modal-delete", Button).label = t("session_modal.delete_button")
@@ -69,6 +89,10 @@ class SessionModal(ModalScreen):
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "btn-modal-close":
             self.dismiss(None)
+        elif event.button.id == "btn-modal-open-report":
+            self.dismiss("open_report")
+        elif event.button.id == "btn-modal-export-zip":
+            self.dismiss("export_zip")
         elif event.button.id == "btn-modal-analyze":
             self.dismiss("analyze")
         elif event.button.id == "btn-modal-reprocess":

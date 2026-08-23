@@ -141,6 +141,284 @@ class TestSemanticSearchTool:
         mock_store_cls.assert_called_once_with(openai_client=None)
 
 
+class TestApprovePendingActionTool:
+    def test_approves_and_executes_the_queued_handler(self, patched_db, monkeypatch):
+        from src.agent import commands as agent_commands
+        from src.mcp import tools
+
+        monkeypatch.setattr(agent_commands, "_REGISTRY", {})
+        calls = []
+        agent_commands.register(agent_commands.Command(
+            name="delete_thing", kind="delete", description="d",
+            parameters={"type": "object", "properties": {"row_id": {"type": "integer"}}, "required": ["row_id"]},
+            handler=lambda row_id: calls.append(row_id),
+            table_name="things",
+        ))
+        agent_commands.execute("delete_thing", {"row_id": 7})
+        pending_id = patched_db.get_pending_actions()[0].id
+
+        result = asyncio.run(tools.approve_pending_action(pending_id))
+
+        assert result == {"ok": True}
+        assert calls == [7]
+        approved = {p.id: p for p in patched_db.get_pending_actions(status="approved")}
+        assert approved[pending_id].resolved_by == "mcp-client"
+
+    def test_unknown_pending_id_returns_ok_false_instead_of_raising(self, patched_db):
+        from src.mcp import tools
+
+        result = asyncio.run(tools.approve_pending_action(999999))
+
+        assert result == {"ok": False, "error": "no pending action with id 999999"}
+
+
+class TestRejectPendingActionTool:
+    def test_rejects_without_executing_the_handler(self, patched_db, monkeypatch):
+        from src.agent import commands as agent_commands
+        from src.mcp import tools
+
+        monkeypatch.setattr(agent_commands, "_REGISTRY", {})
+        calls = []
+        agent_commands.register(agent_commands.Command(
+            name="delete_thing", kind="delete", description="d",
+            parameters={"type": "object", "properties": {"row_id": {"type": "integer"}}, "required": ["row_id"]},
+            handler=lambda row_id: calls.append(row_id),
+            table_name="things",
+        ))
+        agent_commands.execute("delete_thing", {"row_id": 7})
+        pending_id = patched_db.get_pending_actions()[0].id
+
+        result = asyncio.run(tools.reject_pending_action(pending_id))
+
+        assert result == {"ok": True}
+        assert calls == []
+        rejected = {p.id: p for p in patched_db.get_pending_actions(status="rejected")}
+        assert rejected[pending_id].resolved_by == "mcp-client"
+
+    def test_unknown_pending_id_returns_ok_false_instead_of_silently_no_op(self, patched_db):
+        """db.resolve_pending_action() silently no-ops on an unknown id (an
+        UPDATE matching zero rows) — the tool must not report success for a
+        no-op, since a client would read {"ok": True} as proof something
+        was actually rejected."""
+        from src.mcp import tools
+
+        result = asyncio.run(tools.reject_pending_action(999999))
+
+        assert result == {"ok": False, "error": "no pending action with id 999999"}
+
+
+class TestStartVideoProcessingTool:
+    def test_claims_the_slot_and_launches_the_pipeline_in_background(self, patched_db, monkeypatch):
+        from src.mcp import tools
+
+        monkeypatch.setattr("src.video.pipeline._get_title", lambda url: "El título real")
+        launched = []
+        monkeypatch.setattr(
+            "src.video.pipeline.run_pipeline",
+            lambda url, model_size, on_progress, session: launched.append((url, session.id)),
+        )
+
+        async def _run():
+            result = await tools.start_video_processing("https://yt/1")
+            await asyncio.sleep(0.05)  # let the fire-and-forget background task actually run
+            return result
+
+        result = asyncio.run(_run())
+
+        assert result["ok"] is True
+        assert result["status"] == "processing"
+        session_id = result["session_id"]
+        sessions = {s.id: s for s in patched_db.get_video_sessions()}
+        assert sessions[session_id].status == "processing"
+        assert sessions[session_id].title == "El título real"
+        assert launched == [("https://yt/1", session_id)]
+
+    def test_rejects_when_a_video_is_already_processing(self, patched_db, monkeypatch):
+        from src.db.video_sessions import try_start_processing_session
+        from src.mcp import tools
+
+        try_start_processing_session("Ya en curso", "https://yt/0")
+        monkeypatch.setattr("src.video.pipeline._get_title", lambda url: "Otro título")
+
+        result = asyncio.run(tools.start_video_processing("https://yt/1"))
+
+        assert result == {"ok": False, "error": "a video is already processing"}
+        # Only the pre-existing session must exist — nothing new was created.
+        assert len(patched_db.get_video_sessions()) == 1
+
+    def test_lock_contention_returns_ok_false_instead_of_raising(self, patched_db, monkeypatch):
+        """try_start_processing_session's BEGIN IMMEDIATE can raise
+        sqlite3.OperationalError under real write contention (no
+        busy_timeout configured) — must not cross the MCP tool boundary
+        as a raw, unhandled exception."""
+        import sqlite3
+
+        from src.mcp import tools
+
+        monkeypatch.setattr("src.video.pipeline._get_title", lambda url: "Título")
+        monkeypatch.setattr(
+            "src.db.video_sessions.try_start_processing_session",
+            lambda title, url: (_ for _ in ()).throw(sqlite3.OperationalError("database is locked")),
+        )
+
+        result = asyncio.run(tools.start_video_processing("https://yt/1"))
+
+        assert result["ok"] is False
+        assert "database is locked" in result["error"]
+
+    def test_keeps_a_strong_reference_to_the_background_task(self, patched_db, monkeypatch):
+        """asyncio only holds a weak reference to a Task — without a
+        strong reference kept somewhere (e.g. a module-level set), it's
+        eligible for GC before the multi-minute pipeline job completes."""
+        from src.mcp import tools
+
+        monkeypatch.setattr("src.video.pipeline._get_title", lambda url: "Título")
+        monkeypatch.setattr("src.video.pipeline.run_pipeline", lambda *a: None)
+
+        async def _run():
+            before = len(tools._background_tasks)
+            result = await tools.start_video_processing("https://yt/1")
+            during = len(tools._background_tasks)
+            await asyncio.sleep(0.05)
+            after = len(tools._background_tasks)
+            return before, during, after, result
+
+        before, during, after, result = asyncio.run(_run())
+
+        assert result["ok"] is True
+        assert during == before + 1  # task was tracked while in flight
+        assert after == before  # and dropped once it completed
+
+
+class TestGetVideoProcessingStatusTool:
+    def test_returns_status_for_a_known_session(self, patched_db):
+        from src.mcp import tools
+
+        session = patched_db.create_video_session("Video", "https://yt/1")
+
+        result = asyncio.run(tools.get_video_processing_status(session.id))
+
+        assert result == {
+            "ok": True, "status": "pending", "report_url": None, "error_msg": None,
+        }
+
+    def test_includes_report_url_once_done(self, patched_db, tmp_path):
+        from src.mcp import tools
+
+        report = tmp_path / "report.html"
+        report.write_text("<html></html>")
+        session = patched_db.create_video_session("Video", "https://yt/1")
+        patched_db.update_session_status(session.id, "done", html_report=str(report))
+
+        result = asyncio.run(tools.get_video_processing_status(session.id))
+
+        assert result["ok"] is True
+        assert result["status"] == "done"
+        assert result["report_url"] == report.resolve().as_uri()
+
+    def test_includes_error_msg_on_failure(self, patched_db):
+        from src.mcp import tools
+
+        session = patched_db.create_video_session("Video", "https://yt/1")
+        patched_db.update_session_status(session.id, "error", error_msg="boom")
+
+        result = asyncio.run(tools.get_video_processing_status(session.id))
+
+        assert result == {
+            "ok": True, "status": "error", "report_url": None, "error_msg": "boom",
+        }
+
+    def test_unknown_session_id_returns_ok_false(self, patched_db):
+        from src.mcp import tools
+
+        result = asyncio.run(tools.get_video_processing_status(999999))
+
+        assert result == {"ok": False, "error": "no video session with id 999999"}
+
+
+class TestListReportsTool:
+    def test_lists_only_sessions_with_a_report(self, patched_db):
+        from src.mcp import tools
+
+        with_report = patched_db.create_video_session("With report", "https://yt/1")
+        patched_db.update_session_status(with_report.id, "done", html_report="/tmp/1/report.html")
+        no_report = patched_db.create_video_session("No report", "https://yt/2")
+        patched_db.update_session_status(no_report.id, "processing")
+
+        with patch("pathlib.Path.exists", return_value=True):
+            results = asyncio.run(tools.list_reports())
+
+        assert {r["id"] for r in results} == {with_report.id}
+        assert results[0]["title"] == "With report"
+        assert results[0]["report_url"].startswith("file://")
+        assert results[0]["report_url"].endswith("report.html")
+
+    def test_skips_reports_whose_html_file_no_longer_exists_on_disk(self, patched_db):
+        from src.mcp import tools
+
+        session = patched_db.create_video_session("Stale", "https://yt/1")
+        patched_db.update_session_status(session.id, "done", html_report="/tmp/does-not-exist/report.html")
+
+        results = asyncio.run(tools.list_reports())
+
+        assert results == []
+
+    def test_filters_by_title_query_case_insensitive(self, patched_db):
+        from src.mcp import tools
+
+        s1 = patched_db.create_video_session("Redis deep dive", "https://yt/1")
+        patched_db.update_session_status(s1.id, "done", html_report="/tmp/1/report.html")
+        s2 = patched_db.create_video_session("Postgres basics", "https://yt/2")
+        patched_db.update_session_status(s2.id, "done", html_report="/tmp/2/report.html")
+
+        with patch("pathlib.Path.exists", return_value=True):
+            results = asyncio.run(tools.list_reports(title_query="redis"))
+
+        assert {r["id"] for r in results} == {s1.id}
+
+
+class TestGetReportUrlTool:
+    def test_returns_file_uri_for_session_with_report(self, patched_db):
+        from src.mcp import tools
+
+        session = patched_db.create_video_session("Has report", "https://yt/1")
+        patched_db.update_session_status(session.id, "done", html_report="/tmp/1/report.html")
+
+        with patch("pathlib.Path.exists", return_value=True):
+            url = asyncio.run(tools.get_report_url(session.id))
+
+        assert url is not None
+        assert url.startswith("file://")
+        assert url.endswith("report.html")
+
+    def test_returns_none_when_session_has_no_report(self, patched_db):
+        from src.mcp import tools
+
+        session = patched_db.create_video_session("No report yet", "https://yt/1")
+        patched_db.update_session_status(session.id, "processing")
+
+        url = asyncio.run(tools.get_report_url(session.id))
+
+        assert url is None
+
+    def test_returns_none_for_unknown_session_id(self, patched_db):
+        from src.mcp import tools
+
+        url = asyncio.run(tools.get_report_url(999999))
+
+        assert url is None
+
+    def test_returns_none_when_html_file_no_longer_exists_on_disk(self, patched_db):
+        from src.mcp import tools
+
+        session = patched_db.create_video_session("Deleted from disk", "https://yt/1")
+        patched_db.update_session_status(session.id, "done", html_report="/tmp/gone/report.html")
+
+        url = asyncio.run(tools.get_report_url(session.id))
+
+        assert url is None
+
+
 class TestGetSessionTool:
     def test_get_session_returns_session_and_its_segments(self, patched_db):
         from src.db.database import CallSegment

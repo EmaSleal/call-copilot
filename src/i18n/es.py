@@ -30,6 +30,9 @@ ES_STRINGS: dict[str, str] = {
     "settings.scope_restart": "requiere reiniciar",
     "settings.scope_next_call": "aplica en la próxima llamada",
     "settings.scope_next_video": "aplica en el próximo video",
+    "settings.scope_mcp_restart": "requiere reiniciar tu cliente MCP (ej. Claude Desktop)",
+    "settings.mcp_approvals_label": "MCP — permitir aprobar/rechazar deletes:",
+    "settings.mcp_video_processing_label": "MCP — permitir procesar video:",
     "settings.sync_feedback": "Sincronizado. {imported} nuevas, {skipped} ya existían.",
     "settings.close_binding": "Cerrar",
 
@@ -119,6 +122,8 @@ ES_STRINGS: dict[str, str] = {
     "video.processing_button": "⏳ Procesando...",
     "video.processed_ok": "✓ Procesado correctamente",
     "video.process_error": "Error: {error}",
+    "video.export_zip_ok": "✓ Zip exportado: {path}",
+    "video.export_zip_error": "Error exportando zip: {error}",
     "video.analyzing_otros": "Analizando segmentos 'Otros'...",
     "video.no_otros_segments": "No hay segmentos 'Otros' en esta sesión.",
     "video.suggestions_found": "{count} sugerencia(s). Marcá las que querés agregar.",
@@ -228,6 +233,8 @@ ES_STRINGS: dict[str, str] = {
 
     # session_modal.py — SessionModal
     "session_modal.segments_count": "{count} segmentos",
+    "session_modal.open_report_button": "Abrir reporte",
+    "session_modal.export_zip_button": "Exportar zip",
     "session_modal.analyze_button": "Analizar Otros",
     "session_modal.reprocess_button": "Reprocesar",
     "session_modal.delete_button": "Eliminar",

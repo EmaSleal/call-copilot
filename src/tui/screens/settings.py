@@ -74,6 +74,7 @@ def summarize_scopes(changed_keys) -> dict:
         config_defaults.Scope.RESTART: t("settings.scope_restart"),
         config_defaults.Scope.NEXT_CALL: t("settings.scope_next_call"),
         config_defaults.Scope.NEXT_VIDEO: t("settings.scope_next_video"),
+        config_defaults.Scope.MCP_RESTART: t("settings.scope_mcp_restart"),
     }
     return {key: labels[config_defaults.scope_of(key)] for key in changed_keys}
 
@@ -209,6 +210,21 @@ class SettingsScreen(ModalScreen):
                     id="btn-settings-sync-tools",
                     variant="default",
                 )
+                yield Label(t("settings.mcp_approvals_label"), id="lbl-settings-mcp-approvals")
+                yield Select(
+                    [("false", "false"), ("true", "true")],
+                    id="settings-mcp-approvals",
+                    value="true" if config_defaults.mcp_allow_approvals() else "false",
+                )
+                yield Label(
+                    t("settings.mcp_video_processing_label"),
+                    id="lbl-settings-mcp-video-processing",
+                )
+                yield Select(
+                    [("false", "false"), ("true", "true")],
+                    id="settings-mcp-video-processing",
+                    value="true" if config_defaults.mcp_allow_video_processing() else "false",
+                )
             yield Label("", id="settings-feedback")
 
     def retranslate(self) -> None:
@@ -237,6 +253,12 @@ class SettingsScreen(ModalScreen):
             t("settings.tech_scout_path_label")
         )
         self.query_one("#btn-settings-sync-tools", Button).label = t("settings.sync_tech_scout_button")
+        self.query_one("#lbl-settings-mcp-approvals", Label).update(
+            t("settings.mcp_approvals_label")
+        )
+        self.query_one("#lbl-settings-mcp-video-processing", Label).update(
+            t("settings.mcp_video_processing_label")
+        )
         for env_key, input_id in _SETTINGS_KEY_INPUT_IDS:
             key_input = self.query_one(f"#{input_id}", Input)
             if not key_input.value:
@@ -250,6 +272,10 @@ class SettingsScreen(ModalScreen):
             "WHISPER_MODEL_CALL": config_defaults.whisper_model_call(),
             "WHISPER_MODEL_VIDEO": config_defaults.whisper_model_video(),
             "SILENCE_THRESHOLD_MS": str(config_defaults.silence_threshold_ms()),
+            "MCP_ALLOW_APPROVALS": "true" if config_defaults.mcp_allow_approvals() else "false",
+            "MCP_ALLOW_VIDEO_PROCESSING": (
+                "true" if config_defaults.mcp_allow_video_processing() else "false"
+            ),
         }
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
@@ -277,6 +303,12 @@ class SettingsScreen(ModalScreen):
             "SILENCE_THRESHOLD_MS": self.query_one(
                 "#settings-silence-threshold", Input
             ).value,
+            "MCP_ALLOW_APPROVALS": str(
+                self.query_one("#settings-mcp-approvals", Select).value
+            ),
+            "MCP_ALLOW_VIDEO_PROCESSING": str(
+                self.query_one("#settings-mcp-video-processing", Select).value
+            ),
         }
         errors = validate_settings_form(new_values)
         if errors:

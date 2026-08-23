@@ -145,6 +145,20 @@ class TestSummarizeScopes:
         result = summarize_scopes(["STT_BACKEND", "LLM_BACKEND"])
         assert set(result.keys()) == {"STT_BACKEND", "LLM_BACKEND"}
 
+    def test_mcp_allow_approvals_maps_to_a_distinct_mcp_badge(self, spanish):
+        # Distinct wording from the plain "requiere reiniciar" badge:
+        # restarting the TUI does nothing for this — the process that
+        # needs restarting is the external MCP client (e.g. Claude
+        # Desktop), not call-copilot itself.
+        result = summarize_scopes(["MCP_ALLOW_APPROVALS"])
+        stt_badge = summarize_scopes(["STT_BACKEND"])["STT_BACKEND"]
+        assert "MCP" in result["MCP_ALLOW_APPROVALS"]
+        assert result["MCP_ALLOW_APPROVALS"] != stt_badge
+
+    def test_mcp_allow_video_processing_maps_to_the_same_mcp_badge(self, spanish):
+        result = summarize_scopes(["MCP_ALLOW_VIDEO_PROCESSING"])
+        assert "MCP" in result["MCP_ALLOW_VIDEO_PROCESSING"]
+
 
 # ---------------------------------------------------------------------------
 # key_to_provider() — PR2: maps a saved API-key env var to the model_catalog

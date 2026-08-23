@@ -21,6 +21,8 @@ process a client like Claude Desktop can launch on demand, not pull in
 Textual.
 """
 
+import os
+
 from dotenv import load_dotenv
 
 from src.core import env_store
@@ -81,6 +83,25 @@ def build_server():
         ),
     )
     server.add_tool(
+        tools.list_reports,
+        name="list_reports",
+        description=(
+            "List video sessions that already have a generated HTML "
+            "report, each with a file:// URL to open it directly. "
+            "Optional case-insensitive substring filter on title. Skips "
+            "reports whose file was deleted from disk."
+        ),
+    )
+    server.add_tool(
+        tools.get_report_url,
+        name="get_report_url",
+        description=(
+            "Get the file:// URL for one video session's report by "
+            "session_id, or null if it doesn't exist, has no report yet, "
+            "or the file was deleted from disk."
+        ),
+    )
+    server.add_tool(
         tools.semantic_search,
         name="semantic_search",
         description=(
@@ -92,6 +113,61 @@ def build_server():
             "use search_content for guaranteed full-text results."
         ),
     )
+    # The server's one write surface — off by default. Approving/rejecting
+    # only resolves a delete a human/agent already queued via
+    # src/agent/commands.py (categories/tools catalog); it can never
+    # originate a new delete. Set MCP_ALLOW_APPROVALS=true to opt in.
+    if os.getenv("MCP_ALLOW_APPROVALS", "false").lower() == "true":
+        server.add_tool(
+            tools.approve_pending_action,
+            name="approve_pending_action",
+            description=(
+                "Approve an agent-proposed pending delete (queued by "
+                "call-copilot's own catalog-maintenance loop) and run it. "
+                "Returns {'ok': False, 'error': ...} for an unknown or "
+                "already-resolved pending_id instead of raising."
+            ),
+        )
+        server.add_tool(
+            tools.reject_pending_action,
+            name="reject_pending_action",
+            description=(
+                "Reject an agent-proposed pending delete without running "
+                "it. Returns {'ok': False, 'error': ...} for an unknown or "
+                "already-resolved pending_id instead of raising."
+            ),
+        )
+    # The server's second write surface — separate flag, separate risk
+    # profile from MCP_ALLOW_APPROVALS: this originates NEW heavy work
+    # (network download + CPU/GPU transcription, minutes) from an
+    # arbitrary URL, rather than resolving a delete an internal agent
+    # already vetted. Concurrency=1 is enforced atomically in
+    # src/db/video_sessions.py::try_start_processing_session (validated
+    # against real concurrent OS processes — see
+    # docs/next-steps/feature-proposals.md point 5 Hallazgo 3). Off by
+    # default; set MCP_ALLOW_VIDEO_PROCESSING=true to opt in.
+    if os.getenv("MCP_ALLOW_VIDEO_PROCESSING", "false").lower() == "true":
+        server.add_tool(
+            tools.start_video_processing,
+            name="start_video_processing",
+            description=(
+                "Start processing a video by URL (download, transcribe, "
+                "classify, generate report) in the background — returns "
+                "immediately with a session_id, never blocks until "
+                "finished. Only one video may process at a time: returns "
+                "{'ok': False, 'error': ...} if one is already running. "
+                "Poll get_video_processing_status(session_id) for progress."
+            ),
+        )
+        server.add_tool(
+            tools.get_video_processing_status,
+            name="get_video_processing_status",
+            description=(
+                "Poll the status of a video session (pending/processing/"
+                "done/error), with report_url once done. Returns "
+                "{'ok': False, 'error': ...} for an unknown session_id."
+            ),
+        )
     return server
 
 
