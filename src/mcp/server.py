@@ -127,6 +127,37 @@ def build_server():
                 "already-resolved pending_id instead of raising."
             ),
         )
+    # The server's second write surface — separate flag, separate risk
+    # profile from MCP_ALLOW_APPROVALS: this originates NEW heavy work
+    # (network download + CPU/GPU transcription, minutes) from an
+    # arbitrary URL, rather than resolving a delete an internal agent
+    # already vetted. Concurrency=1 is enforced atomically in
+    # src/db/video_sessions.py::try_start_processing_session (validated
+    # against real concurrent OS processes — see
+    # docs/next-steps/feature-proposals.md point 5 Hallazgo 3). Off by
+    # default; set MCP_ALLOW_VIDEO_PROCESSING=true to opt in.
+    if os.getenv("MCP_ALLOW_VIDEO_PROCESSING", "false").lower() == "true":
+        server.add_tool(
+            tools.start_video_processing,
+            name="start_video_processing",
+            description=(
+                "Start processing a video by URL (download, transcribe, "
+                "classify, generate report) in the background — returns "
+                "immediately with a session_id, never blocks until "
+                "finished. Only one video may process at a time: returns "
+                "{'ok': False, 'error': ...} if one is already running. "
+                "Poll get_video_processing_status(session_id) for progress."
+            ),
+        )
+        server.add_tool(
+            tools.get_video_processing_status,
+            name="get_video_processing_status",
+            description=(
+                "Poll the status of a video session (pending/processing/"
+                "done/error), with report_url once done. Returns "
+                "{'ok': False, 'error': ...} for an unknown session_id."
+            ),
+        )
     return server
 
 

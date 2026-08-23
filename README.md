@@ -228,6 +228,8 @@ Tools que expone:
 | `semantic_search` | búsqueda semántica (embeddings) sobre segmentos de video y llamadas — best-effort, ver limitación abajo |
 | `list_reports` | sesiones de video con reporte HTML ya generado, con URL `file://` para abrirlo, filtro opcional por substring de título |
 | `get_report_url` | URL `file://` del reporte de una sesión de video puntual por `session_id`, o `null` si no existe |
+| `start_video_processing` | inicia el procesamiento de un video por URL en background, devuelve `session_id` de inmediato — apagada por default |
+| `get_video_processing_status` | estado de una sesión de video (`pending`/`processing`/`done`/`error`) + `report_url` una vez lista — apagada por default |
  
 Limitación conocida — `technology` en video: para llamadas, `technology`
 resuelve contra el catálogo curado `tools`/`tool_mentions`. Para video, hoy
@@ -256,6 +258,16 @@ del proceso `call-copilot-mcp` — sin esa variable, ni siquiera aparecen en
 cliente MCP (Claude Desktop incluido) **no hereda el entorno del shell**
 al lanzar el proceso — la variable tiene que ir en el `env` de la config
 del cliente, no alcanza con exportarla en la terminal.
+ 
+`start_video_processing` / `get_video_processing_status` — segunda
+superficie de escritura, **apagada por default**, flag independiente:
+`MCP_ALLOW_VIDEO_PROCESSING=true`. A diferencia de `approve_pending_action`,
+esto origina trabajo nuevo (descarga + transcripción, minutos) a partir de
+una URL arbitraria — patrón fire-and-forget + poll, nunca bloquea la
+llamada hasta terminar. Solo un video a la vez: `start_video_processing`
+devuelve `{"ok": false, "error": ...}` si ya hay uno procesándose (claim
+atómico, validado contra procesos concurrentes reales — ver
+`docs/next-steps/feature-proposals.md` punto 5).
  
 ## Pendiente / próximos pasos
  
