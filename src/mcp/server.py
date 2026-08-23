@@ -7,6 +7,15 @@ runs at the very start of `main()`, before anything that might read an env
 var (STT/LLM API keys are irrelevant here, but `src/core/paths.app_home()`
 used by `src/db/database.py` can be env-configurable).
 
+`load_dotenv()` is called with `env_store.ENV_PATH` explicitly rather than
+its own default search — a bare `load_dotenv()` resolves via python-dotenv's
+`find_dotenv()`, which walks up from the CALLING FILE's own location, not
+from `app_home()`. For a pipx install launched by an external client
+(Claude Desktop) from an unrelated cwd, that search never reaches
+`~/.call-copilot/.env` — the exact file `src/core/env_store.py` (and the
+TUI's settings screen) writes to. Confirmed empirically: `find_dotenv()`
+returned `''` when run from `/tmp` against the installed package.
+
 Deliberately does NOT import `src.tui.*` — this must stay a lightweight
 process a client like Claude Desktop can launch on demand, not pull in
 Textual.
@@ -14,6 +23,7 @@ Textual.
 
 from dotenv import load_dotenv
 
+from src.core import env_store
 from src.mcp import tools
 
 
@@ -86,7 +96,7 @@ def build_server():
 
 
 def main() -> None:
-    load_dotenv()
+    load_dotenv(env_store.ENV_PATH)
     server = build_server()
     server.run(transport="stdio")
 
