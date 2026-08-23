@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.10.0](https://github.com/EmaSleal/call-copilot/compare/v0.9.2...v0.10.0) (2026-08-23)
+
+
+### Features
+
+* **tui:** add MCP write-tool toggles to the Settings panel ([86e54c2](https://github.com/EmaSleal/call-copilot/commit/86e54c2c56679cc7e2fe169f409687733d2aee0d))
+
+
+### Bug Fixes
+
+* integrate the PR [#32](https://github.com/EmaSleal/call-copilot/issues/32)-[#38](https://github.com/EmaSleal/call-copilot/issues/38) and [#42](https://github.com/EmaSleal/call-copilot/issues/42) chains into main (never actually landed) ([9352558](https://github.com/EmaSleal/call-copilot/commit/9352558e4967410fbf2bd742a03b9fec00059d45))
+
 ## [0.9.2](https://github.com/EmaSleal/call-copilot/compare/v0.9.1...v0.9.2) (2026-08-23)
 
 
