@@ -226,6 +226,8 @@ Tools que expone:
 | `list_tools_catalog` | catálogo de Tools, con filtro opcional por substring |
 | `get_session` | una sesión (video o llamada) más todos sus segmentos, en un solo llamado |
 | `semantic_search` | búsqueda semántica (embeddings) sobre segmentos de video y llamadas — best-effort, ver limitación abajo |
+| `list_reports` | sesiones de video con reporte HTML ya generado, con URL `file://` para abrirlo, filtro opcional por substring de título |
+| `get_report_url` | URL `file://` del reporte de una sesión de video puntual por `session_id`, o `null` si no existe |
  
 Limitación conocida — `technology` en video: para llamadas, `technology`
 resuelve contra el catálogo curado `tools`/`tool_mentions`. Para video, hoy

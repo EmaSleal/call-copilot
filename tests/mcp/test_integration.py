@@ -26,4 +26,6 @@ class TestServerToolRegistration:
             "list_tools_catalog",
             "get_session",
             "semantic_search",
+            "list_reports",
+            "get_report_url",
         }

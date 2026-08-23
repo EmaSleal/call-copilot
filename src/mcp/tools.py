@@ -15,6 +15,7 @@ function or `src.mcp.queries.search_content`.
 
 import asyncio
 from dataclasses import asdict
+from pathlib import Path
 from typing import Optional
 
 from src.db import database
@@ -66,6 +67,52 @@ async def list_tools_catalog(name_query: Optional[str] = None) -> list[dict]:
         needle = name_query.strip().lower()
         results = [r for r in results if needle in r["name"].lower()]
     return results
+
+
+def _report_url(html_report: Optional[str]) -> Optional[str]:
+    if not html_report:
+        return None
+    path = Path(html_report)
+    if not path.exists():
+        return None
+    return path.resolve().as_uri()
+
+
+async def list_reports(title_query: Optional[str] = None) -> list[dict]:
+    """Video sessions that already have a generated HTML report, each with
+    a `file://` URL an MCP client (e.g. Claude Desktop) can open directly.
+    Closes the gap where `get_session`'s `UnifiedSession` has no
+    `html_report` field — call sessions have none, so it isn't part of the
+    unified video/call model. Skips a session whose `html_report` row
+    points at a file no longer on disk rather than returning a broken
+    link. Optionally filtered client-side by a case-insensitive substring
+    match on `title`, same convention as `list_tools_catalog`."""
+    sessions = await asyncio.to_thread(database.get_video_sessions)
+    needle = title_query.strip().lower() if title_query else None
+    results = []
+    for s in sessions:
+        url = _report_url(s.html_report)
+        if url is None:
+            continue
+        if needle and needle not in s.title.lower():
+            continue
+        results.append(
+            {"id": s.id, "title": s.title, "created_at": s.created_at, "report_url": url}
+        )
+    return results
+
+
+async def get_report_url(session_id: int) -> Optional[str]:
+    """The `file://` URL for one video session's report, or `None` if the
+    session doesn't exist, has no report yet, or the file was deleted
+    from disk. The single-id counterpart to `list_reports` for a client
+    that already has a `session_id` (e.g. from `get_session`)."""
+    def _sync() -> Optional[str]:
+        sessions = database.get_video_sessions()
+        session = next((s for s in sessions if s.id == session_id), None)
+        return _report_url(session.html_report) if session else None
+
+    return await asyncio.to_thread(_sync)
 
 
 def _get_session_sync(session_id: int, source: str) -> dict:

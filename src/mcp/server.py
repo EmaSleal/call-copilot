@@ -71,6 +71,25 @@ def build_server():
         ),
     )
     server.add_tool(
+        tools.list_reports,
+        name="list_reports",
+        description=(
+            "List video sessions that already have a generated HTML "
+            "report, each with a file:// URL to open it directly. "
+            "Optional case-insensitive substring filter on title. Skips "
+            "reports whose file was deleted from disk."
+        ),
+    )
+    server.add_tool(
+        tools.get_report_url,
+        name="get_report_url",
+        description=(
+            "Get the file:// URL for one video session's report by "
+            "session_id, or null if it doesn't exist, has no report yet, "
+            "or the file was deleted from disk."
+        ),
+    )
+    server.add_tool(
         tools.semantic_search,
         name="semantic_search",
         description=(

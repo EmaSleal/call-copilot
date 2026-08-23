@@ -141,6 +141,89 @@ class TestSemanticSearchTool:
         mock_store_cls.assert_called_once_with(openai_client=None)
 
 
+class TestListReportsTool:
+    def test_lists_only_sessions_with_a_report(self, patched_db):
+        from src.mcp import tools
+
+        with_report = patched_db.create_video_session("With report", "https://yt/1")
+        patched_db.update_session_status(with_report.id, "done", html_report="/tmp/1/report.html")
+        no_report = patched_db.create_video_session("No report", "https://yt/2")
+        patched_db.update_session_status(no_report.id, "processing")
+
+        with patch("pathlib.Path.exists", return_value=True):
+            results = asyncio.run(tools.list_reports())
+
+        assert {r["id"] for r in results} == {with_report.id}
+        assert results[0]["title"] == "With report"
+        assert results[0]["report_url"].startswith("file://")
+        assert results[0]["report_url"].endswith("report.html")
+
+    def test_skips_reports_whose_html_file_no_longer_exists_on_disk(self, patched_db):
+        from src.mcp import tools
+
+        session = patched_db.create_video_session("Stale", "https://yt/1")
+        patched_db.update_session_status(session.id, "done", html_report="/tmp/does-not-exist/report.html")
+
+        results = asyncio.run(tools.list_reports())
+
+        assert results == []
+
+    def test_filters_by_title_query_case_insensitive(self, patched_db):
+        from src.mcp import tools
+
+        s1 = patched_db.create_video_session("Redis deep dive", "https://yt/1")
+        patched_db.update_session_status(s1.id, "done", html_report="/tmp/1/report.html")
+        s2 = patched_db.create_video_session("Postgres basics", "https://yt/2")
+        patched_db.update_session_status(s2.id, "done", html_report="/tmp/2/report.html")
+
+        with patch("pathlib.Path.exists", return_value=True):
+            results = asyncio.run(tools.list_reports(title_query="redis"))
+
+        assert {r["id"] for r in results} == {s1.id}
+
+
+class TestGetReportUrlTool:
+    def test_returns_file_uri_for_session_with_report(self, patched_db):
+        from src.mcp import tools
+
+        session = patched_db.create_video_session("Has report", "https://yt/1")
+        patched_db.update_session_status(session.id, "done", html_report="/tmp/1/report.html")
+
+        with patch("pathlib.Path.exists", return_value=True):
+            url = asyncio.run(tools.get_report_url(session.id))
+
+        assert url is not None
+        assert url.startswith("file://")
+        assert url.endswith("report.html")
+
+    def test_returns_none_when_session_has_no_report(self, patched_db):
+        from src.mcp import tools
+
+        session = patched_db.create_video_session("No report yet", "https://yt/1")
+        patched_db.update_session_status(session.id, "processing")
+
+        url = asyncio.run(tools.get_report_url(session.id))
+
+        assert url is None
+
+    def test_returns_none_for_unknown_session_id(self, patched_db):
+        from src.mcp import tools
+
+        url = asyncio.run(tools.get_report_url(999999))
+
+        assert url is None
+
+    def test_returns_none_when_html_file_no_longer_exists_on_disk(self, patched_db):
+        from src.mcp import tools
+
+        session = patched_db.create_video_session("Deleted from disk", "https://yt/1")
+        patched_db.update_session_status(session.id, "done", html_report="/tmp/gone/report.html")
+
+        url = asyncio.run(tools.get_report_url(session.id))
+
+        assert url is None
+
+
 class TestGetSessionTool:
     def test_get_session_returns_session_and_its_segments(self, patched_db):
         from src.db.database import CallSegment
