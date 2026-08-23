@@ -30,6 +30,9 @@ EN_STRINGS: dict[str, str] = {
     "settings.scope_restart": "requires restart",
     "settings.scope_next_call": "applies on the next call",
     "settings.scope_next_video": "applies on the next video",
+    "settings.scope_mcp_restart": "requires restarting your MCP client (e.g. Claude Desktop)",
+    "settings.mcp_approvals_label": "MCP — allow approve/reject deletes:",
+    "settings.mcp_video_processing_label": "MCP — allow video processing:",
     "settings.sync_feedback": "Synced. {imported} new, {skipped} already existed.",
     "settings.close_binding": "Close",
 

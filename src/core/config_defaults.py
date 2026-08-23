@@ -33,6 +33,7 @@ class Scope(str, Enum):
     RESTART = "restart"
     NEXT_CALL = "next_call"
     NEXT_VIDEO = "next_video"
+    MCP_RESTART = "mcp_restart"
 
 
 # Claves que requieren reiniciar el proceso porque su valor queda "congelado"
@@ -43,11 +44,18 @@ class Scope(str, Enum):
 # _preload_models() es el mismo singleton reusado en cada llamada.
 RESTART_KEYS = {"STT_BACKEND", "WHISPER_MODEL_CALL", "SILENCE_THRESHOLD_MS"}
 
+# MCP_RESTART is distinct from RESTART: restarting the TUI process does
+# nothing for these two — src/mcp/server.py runs as a SEPARATE process
+# launched by an external MCP client (e.g. Claude Desktop), which is the
+# process that actually needs restarting to pick up the new value via
+# load_dotenv() at its own startup.
 _SCOPE_MAP: dict[str, Scope] = {
     "STT_BACKEND": Scope.RESTART,
     "WHISPER_MODEL_CALL": Scope.RESTART,
     "WHISPER_MODEL_VIDEO": Scope.NEXT_VIDEO,
     "SILENCE_THRESHOLD_MS": Scope.RESTART,
+    "MCP_ALLOW_APPROVALS": Scope.MCP_RESTART,
+    "MCP_ALLOW_VIDEO_PROCESSING": Scope.MCP_RESTART,
 }
 
 
@@ -112,6 +120,21 @@ def silence_threshold_ms() -> int:
 def language() -> str:
     """Idioma activo de la UI ('es' o 'en'). Default: 'en'."""
     return _getenv_or_default("LANGUAGE", DEFAULT_LANGUAGE)
+
+
+def mcp_allow_approvals() -> bool:
+    """Whether the MCP server's approve/reject_pending_action write tools
+    are enabled. Off by default — mirrors src/mcp/server.py's own
+    `os.getenv(key, "false").lower() == "true"` gate exactly, so the TUI's
+    displayed state never disagrees with what the server actually does."""
+    return os.getenv("MCP_ALLOW_APPROVALS", "false").lower() == "true"
+
+
+def mcp_allow_video_processing() -> bool:
+    """Whether the MCP server's start_video_processing/get_video_processing_status
+    write tools are enabled. Off by default — same parsing as
+    src/mcp/server.py's own gate."""
+    return os.getenv("MCP_ALLOW_VIDEO_PROCESSING", "false").lower() == "true"
 
 
 def scope_of(key: str) -> Scope:

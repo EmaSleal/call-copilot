@@ -30,6 +30,9 @@ ES_STRINGS: dict[str, str] = {
     "settings.scope_restart": "requiere reiniciar",
     "settings.scope_next_call": "aplica en la próxima llamada",
     "settings.scope_next_video": "aplica en el próximo video",
+    "settings.scope_mcp_restart": "requiere reiniciar tu cliente MCP (ej. Claude Desktop)",
+    "settings.mcp_approvals_label": "MCP — permitir aprobar/rechazar deletes:",
+    "settings.mcp_video_processing_label": "MCP — permitir procesar video:",
     "settings.sync_feedback": "Sincronizado. {imported} nuevas, {skipped} ya existían.",
     "settings.close_binding": "Cerrar",
 
