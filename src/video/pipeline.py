@@ -34,16 +34,40 @@ logger = logging.getLogger("unified.video_pipeline")
 OUTPUT_DIR = app_home() / "data" / "videos"
 
 
+def _resolve_session(
+    url: str, session: Optional[VideoSession], progress: Callable[[str, float], None]
+) -> VideoSession:
+    """Returns `session` unchanged when already provided — point 5's
+    MCP-triggered flow (`src/mcp/tools.py::start_video_processing`)
+    already claimed it atomically via `try_start_processing_session()`
+    before calling `run_pipeline()`, so fetching the title and creating a
+    second row here would both duplicate work and leave an orphan
+    "pending" session nothing ever resolves. Otherwise preserves the
+    original synchronous TUI flow unchanged: fetch the title, then create
+    a new "pending" session."""
+    if session is not None:
+        return session
+    progress("Obteniendo información del video...", 0.0)
+    title = _get_title(url)
+    return create_video_session(title=title, url=url)
+
+
 def run_pipeline(
     url: str,
     model_size: str = "base",
     on_progress: Optional[Callable[[str, float], None]] = None,
+    session: Optional[VideoSession] = None,
 ) -> VideoSession:
     """
     Punto de entrada sincrónico. Llamarlo siempre desde run_in_executor.
 
     on_progress(mensaje, porcentaje_0_a_1) se llama en cada etapa
     para que la TUI pueda actualizar la barra de progreso.
+
+    `session`: pásalo ya creado (status="processing") para saltar el paso
+    de obtener título + crear sesión — usado por el flujo MCP de punto 5,
+    que ya reservó la sesión atómicamente antes de llegar acá. Dejalo en
+    `None` para el flujo normal de la TUI (comportamiento sin cambios).
     """
     def progress(msg: str, pct: float):
         logger.info("[%.0f%%] %s", pct * 100, msg)
@@ -54,12 +78,7 @@ def run_pipeline(
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-    # 1. Obtener título del video
-    progress("Obteniendo información del video...", 0.0)
-    title = _get_title(url)
-
-    # 2. Crear registro en BD
-    session = create_video_session(title=title, url=url)
+    session = _resolve_session(url, session, progress)
     session_dir = OUTPUT_DIR / str(session.id)
     session_dir.mkdir(parents=True, exist_ok=True)
 

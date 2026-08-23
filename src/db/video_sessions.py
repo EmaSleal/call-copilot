@@ -1,5 +1,6 @@
 """DAOs — Video Sessions."""
 
+import sqlite3
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional
@@ -28,6 +29,47 @@ def create_video_session(title: str, url: str) -> VideoSession:
         )
         s.id = cur.lastrowid
     return s
+
+
+def try_start_processing_session(title: str, url: str) -> Optional[VideoSession]:
+    """Atomically check-and-claim the single processing slot for point 5
+    (docs/next-steps/feature-proposals.md — MCP-triggered video
+    processing): if no session is currently `status="processing"`,
+    creates one directly in that status and returns it; otherwise returns
+    None without creating anything.
+
+    Uses `BEGIN IMMEDIATE` — a plain read-then-insert across two
+    statements (even inside `database._conn()`'s default deferred
+    transaction) has a real time-of-check-to-time-of-use race: two
+    separate OS processes can both see "nothing processing" before either
+    writes. This isn't hypothetical — Claude Desktop was confirmed to run
+    2+ instances of the same MCP server concurrently as separate
+    processes. `BEGIN IMMEDIATE` grabs sqlite's write lock before the
+    SELECT, so a second concurrent caller blocks until the first commits
+    and then correctly sees its row."""
+    conn = sqlite3.connect(database.DB_PATH, isolation_level=None)
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        row = conn.execute(
+            "SELECT 1 FROM video_sessions WHERE status='processing' AND deleted_at IS NULL LIMIT 1"
+        ).fetchone()
+        if row is not None:
+            conn.execute("ROLLBACK")
+            return None
+
+        now = datetime.now().isoformat()
+        cur = conn.execute(
+            "INSERT INTO video_sessions (title, url, status, created_at) VALUES (?,?,?,?)",
+            (title, url, "processing", now),
+        )
+        session_id = cur.lastrowid
+        conn.execute("COMMIT")
+        return VideoSession(id=session_id, title=title, url=url, status="processing", created_at=now)
+    except Exception:
+        conn.execute("ROLLBACK")
+        raise
+    finally:
+        conn.close()
 
 
 def delete_video_session(session_id: int, actor: str = "human") -> None:
