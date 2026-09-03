@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.10.2](https://github.com/EmaSleal/call-copilot/compare/v0.10.1...v0.10.2) (2026-09-03)
+
+
+### Bug Fixes
+
+* **video:** silence whisper's own progress bar to avoid TUI crash ([a85b7f5](https://github.com/EmaSleal/call-copilot/commit/a85b7f5b17c036d275ed155c21d568eb0ccd9aed))
+* **video:** silence whisper's own progress bar to avoid TUI crash ([87ac38a](https://github.com/EmaSleal/call-copilot/commit/87ac38a1f1ddfd49fe4f81ca25aaf6e65d240de7))
+
 ## [0.10.1](https://github.com/EmaSleal/call-copilot/compare/v0.10.0...v0.10.1) (2026-08-23)
 
 
