@@ -95,7 +95,11 @@ def run_pipeline(
         progress("Cargando modelo Whisper...", 0.25)
         model = whisper.load_model(model_size)
         progress("Transcribiendo...", 0.30)
-        result = model.transcribe(str(audio_path), verbose=False)
+        # verbose=None: silencioso. verbose=False renderiza una barra tqdm
+        # propia directo a la terminal, pisando la pantalla que controla
+        # Textual en modo raw — dispara una carrera de file descriptors
+        # que revienta con "ValueError: bad value(s) in fds_to_keep".
+        result = model.transcribe(str(audio_path), verbose=None)
         segments_raw = _merge_segments(result.get("segments", []))
         progress(f"Segmentos agrupados: {len(segments_raw)}...", 0.38)
 
