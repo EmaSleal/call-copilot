@@ -25,6 +25,7 @@ from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.widgets import Footer, Header, TabbedContent, TabPane
 
+from src.core import env_store
 from src.db.database import init_db
 from src.i18n import t
 from src.tui import bootstrap
@@ -38,7 +39,7 @@ from src.tui.tabs.search import SearchTab
 from src.tui.tabs.tools import ToolsTab
 from src.tui.tabs.video import VideoTab
 
-load_dotenv()
+load_dotenv(env_store.ENV_PATH)
 
 _log_file = os.getenv("CALL_LOG")
 if _log_file:
