@@ -27,10 +27,19 @@ def _build_stt():
         return DeepgramSTT(api_key=os.getenv("DEEPGRAM_API_KEY"), language="es")
     if _whisper_stt_instance is not None:
         return _whisper_stt_instance
-    from src.stt.whisper_local_provider import WhisperLocalSTT
-
-    model_size = config_defaults.whisper_model_call()
-    return WhisperLocalSTT(model_size=model_size, device="cuda", language="es")
+    # STT_BACKEND is a RESTART-scope setting (see config_defaults.RESTART_KEYS):
+    # _preload_models() only builds a WhisperLocalSTT singleton when this
+    # backend is already active at app startup, before Textual takes over
+    # the terminal. Reaching this branch means the backend was switched to
+    # whisper_local mid-session — constructing WhisperModel() here, with
+    # Textual already owning the terminal, is exactly the tqdm/fds_to_keep
+    # crash _preload_models() exists to avoid (see module docstring). Fail
+    # with a clear message instead of that cryptic ValueError.
+    raise RuntimeError(
+        "STT_BACKEND changed to whisper_local without restarting — the "
+        "model can only be loaded safely before Textual takes over the "
+        "terminal. Restart call-copilot to apply the change."
+    )
 
 
 def _build_llm():
