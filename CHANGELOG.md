@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.11.2](https://github.com/EmaSleal/call-copilot/compare/v0.11.1...v0.11.2) (2026-09-04)
+
+
+### Bug Fixes
+
+* **deps:** pin CUDA 12 libs for the whisper-local extra explicitly ([070507d](https://github.com/EmaSleal/call-copilot/commit/070507d25b059c51efe978ad6b015e8b6a3ff19c))
+* **stt:** log whisper local errors + pin CUDA 12 libs for the extra ([18f40fc](https://github.com/EmaSleal/call-copilot/commit/18f40fc00a92894e41f815bfd804e1ba07c1a157))
+* **stt:** log whisper local transcription failures instead of silence ([ba82877](https://github.com/EmaSleal/call-copilot/commit/ba82877e86f99385872a13e17941ce2cfff9a420))
+* **tui:** fail clearly when whisper_local switches without a restart ([ae0167b](https://github.com/EmaSleal/call-copilot/commit/ae0167b8720398838cb1123e6d372aa90e07d5ef))
+* **tui:** fail clearly when whisper_local switches without a restart ([f0d581e](https://github.com/EmaSleal/call-copilot/commit/f0d581e6b130baef2adba425c3cc5d38fd501257))
+
 ## [0.11.1](https://github.com/EmaSleal/call-copilot/compare/v0.11.0...v0.11.1) (2026-09-04)
 
 
