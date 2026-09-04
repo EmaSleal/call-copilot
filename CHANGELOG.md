@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.11.1](https://github.com/EmaSleal/call-copilot/compare/v0.11.0...v0.11.1) (2026-09-04)
+
+
+### Bug Fixes
+
+* **core:** load .env from app_home(), not a bare load_dotenv() search ([fe1c73d](https://github.com/EmaSleal/call-copilot/commit/fe1c73d748bd4a88f0b2f50cea4f8cc937e16b5c))
+* **core:** load .env from app_home(), not a bare load_dotenv() search ([d2ea44a](https://github.com/EmaSleal/call-copilot/commit/d2ea44a05d965b3b1ab68a4d4612c01b7e1dc4aa))
+
 ## [0.11.0](https://github.com/EmaSleal/call-copilot/compare/v0.10.2...v0.11.0) (2026-09-04)
 
 
