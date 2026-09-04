@@ -6,7 +6,7 @@ so only the Textual-free row-formatting logic is unit-tested directly.
 """
 
 from src.db.database import Tool
-from src.tui.tabs.tools import _tool_row
+from src.tui.tabs.tools import _parse_tags_input, _tool_row, format_add_tool_feedback
 
 
 class TestToolRow:
@@ -35,3 +35,25 @@ class TestToolRow:
         _, _, summary = _tool_row(tool)
         assert len(summary) == 81  # 80 chars + ellipsis
         assert summary.endswith("…")
+
+
+class TestParseTagsInput:
+    def test_splits_and_strips_comma_separated_values(self):
+        assert _parse_tags_input(" vector , rag ,db") == ["vector", "rag", "db"]
+
+    def test_drops_empty_segments(self):
+        assert _parse_tags_input("cli,,search,") == ["cli", "search"]
+
+    def test_empty_string_returns_empty_list(self):
+        assert _parse_tags_input("") == []
+
+
+class TestFormatAddToolFeedback:
+    def test_created_true_reports_added(self):
+        msg = format_add_tool_feedback(True, "Chroma")
+        assert "Chroma" in msg
+
+    def test_created_false_reports_dedup_hit(self):
+        msg = format_add_tool_feedback(False, "Chroma")
+        assert "Chroma" in msg
+        assert msg != format_add_tool_feedback(True, "Chroma")

@@ -254,6 +254,52 @@ def import_from_tech_scout(db_path: str) -> tuple[int, int]:
     return len(imported), skipped
 
 
+def save_researched_tool(
+    name: str,
+    *,
+    category: str = "",
+    description: str = "",
+    summary: str = "",
+    tags: list[str] | None = None,
+    source_url: str = "",
+) -> tuple[Tool, bool]:
+    """
+    Persist a tool record that's already been researched/structured upstream
+    (e.g. by whichever LLM/agent an external caller like Hermes has
+    configured) — this function only owns storage + semantic indexing, it
+    never fetches a URL or calls an LLM itself. Same dedup policy as
+    ingest_tools()/import_from_tech_scout(): never overwrites an existing
+    tool's enrichment on a name collision.
+
+    Returns (tool, created) — created=False on a dedup hit.
+    """
+    name = name.strip()
+    if not name:
+        raise ValueError("name is required")
+
+    existing = find_tool_by_name(name)
+    if existing is not None:
+        return existing, False
+
+    full_description = description.strip()
+    if source_url:
+        full_description = f"{full_description} ({source_url})".strip()
+
+    tool = create_tool(
+        Tool(
+            id=None,
+            name=name,
+            normalized_name=normalize_tool_name(name),
+            category=category,
+            description=full_description,
+            summary=summary,
+            tags=json.dumps(tags or []),
+        )
+    )
+    _run_coro_sync(_embed_tools([tool]))
+    return tool, True
+
+
 async def search_tools(query: str, top_k: int = 5) -> list[Tool]:
     """Semantic search over the tools catalog, joined back to full SQLite rows."""
     openai_client = _build_openai_client()
