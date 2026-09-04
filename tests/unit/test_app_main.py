@@ -4,7 +4,8 @@ launches the TUI as before; `call-copilot update` runs the updater instead
 and never touches the TUI/DB bootstrap path.
 """
 
-from unittest.mock import MagicMock
+import importlib
+from unittest.mock import MagicMock, patch
 import pytest
 
 
@@ -62,3 +63,30 @@ class TestMainArgvDispatch:
         mock_init_db.assert_called_once()
         mock_preload.assert_called_once()
         mock_instance.run.assert_called_once()
+
+
+class TestAppLoadDotenv:
+    def test_loads_dotenv_from_the_explicit_env_path_not_default_search(self):
+        """Same bug class already documented/fixed for src/mcp/server.py
+        (see tests/mcp/test_server_main.py): a bare load_dotenv() resolves
+        via python-dotenv's frame-based find_dotenv() search, starting from
+        THIS module's own file location — for a pipx install that never
+        reaches ~/.call-copilot/.env, the file env_store.py (and the
+        Settings screen) actually writes to. Reproduced empirically:
+        importing the installed package from an unrelated cwd left
+        OPENAI_API_KEY out of os.environ even with a valid saved key on
+        disk. Must pass env_store.ENV_PATH explicitly instead — the same
+        fix src/mcp/server.py::main() already has."""
+        from src.core import env_store
+
+        mock_load_dotenv = MagicMock()
+        with patch("dotenv.load_dotenv", mock_load_dotenv):
+            import src.tui.app as app_module
+            importlib.reload(app_module)
+
+        try:
+            mock_load_dotenv.assert_called_once_with(env_store.ENV_PATH)
+        finally:
+            # Restore the module to its real, unpatched state so any other
+            # test importing src.tui.app afterward gets the real load_dotenv.
+            importlib.reload(app_module)

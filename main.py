@@ -10,14 +10,14 @@ import logging
 import os
 import sys
 from dotenv import load_dotenv
-from src.core import config_defaults
+from src.core import config_defaults, env_store
 from src.core.pipeline import CallCopilotPipeline
 from src.audio.vad_silero import SileroVAD
 from src.trigger.heuristic import HeuristicTriggerDetector
 from src.output.console_output import ConsoleOutput
 
 
-load_dotenv()
+load_dotenv(env_store.ENV_PATH)
 
 logging.basicConfig(
     level=logging.INFO,
