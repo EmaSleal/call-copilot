@@ -75,6 +75,16 @@ def build_server():
         ),
     )
     server.add_tool(
+        tools.search_tools_catalog,
+        name="search_tools_catalog",
+        description=(
+            "Semantic (embedding-based) search over the Tools catalog — "
+            "distinct from list_tools_catalog's literal substring filter. "
+            "Best-effort: MAY return an empty list without OPENAI_API_KEY "
+            "or chromadb; use list_tools_catalog for guaranteed results."
+        ),
+    )
+    server.add_tool(
         tools.get_session,
         name="get_session",
         description=(
@@ -166,6 +176,24 @@ def build_server():
                 "Poll the status of a video session (pending/processing/"
                 "done/error), with report_url once done. Returns "
                 "{'ok': False, 'error': ...} for an unknown session_id."
+            ),
+        )
+    # The server's third write surface — separate flag: this persists a
+    # tool record the CALLING AGENT already researched/structured with its
+    # own LLM (call-copilot never fetches a URL or calls an LLM for this).
+    # Never overwrites an existing tool's enrichment on a name collision.
+    # Off by default; set MCP_ALLOW_TOOL_INGESTION=true to opt in.
+    if os.getenv("MCP_ALLOW_TOOL_INGESTION", "false").lower() == "true":
+        server.add_tool(
+            tools.save_tool,
+            name="save_tool",
+            description=(
+                "Persist a tool record already researched/structured by "
+                "the calling agent's own LLM — this never fetches a URL "
+                "or calls an LLM itself, only storage + semantic "
+                "indexing. Never overwrites an existing tool's enrichment "
+                "on a name collision (returns created=false instead). "
+                "Returns {'ok': False, 'error': ...} for an empty name."
             ),
         )
     return server

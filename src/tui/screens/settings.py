@@ -214,6 +214,15 @@ class SettingsScreen(ModalScreen):
                     id="settings-mcp-video-processing",
                     value="true" if config_defaults.mcp_allow_video_processing() else "false",
                 )
+                yield Label(
+                    t("settings.mcp_tool_ingestion_label"),
+                    id="lbl-settings-mcp-tool-ingestion",
+                )
+                yield Select(
+                    [("false", "false"), ("true", "true")],
+                    id="settings-mcp-tool-ingestion",
+                    value="true" if config_defaults.mcp_allow_tool_ingestion() else "false",
+                )
                 yield Button(t("settings.save_button"), id="btn-settings-save", variant="primary")
                 yield Label(t("settings.tech_scout_path_label"), id="lbl-settings-tech-scout-path")
                 yield Input(
@@ -259,6 +268,9 @@ class SettingsScreen(ModalScreen):
         self.query_one("#lbl-settings-mcp-video-processing", Label).update(
             t("settings.mcp_video_processing_label")
         )
+        self.query_one("#lbl-settings-mcp-tool-ingestion", Label).update(
+            t("settings.mcp_tool_ingestion_label")
+        )
         for env_key, input_id in _SETTINGS_KEY_INPUT_IDS:
             key_input = self.query_one(f"#{input_id}", Input)
             if not key_input.value:
@@ -275,6 +287,9 @@ class SettingsScreen(ModalScreen):
             "MCP_ALLOW_APPROVALS": "true" if config_defaults.mcp_allow_approvals() else "false",
             "MCP_ALLOW_VIDEO_PROCESSING": (
                 "true" if config_defaults.mcp_allow_video_processing() else "false"
+            ),
+            "MCP_ALLOW_TOOL_INGESTION": (
+                "true" if config_defaults.mcp_allow_tool_ingestion() else "false"
             ),
         }
 
@@ -308,6 +323,9 @@ class SettingsScreen(ModalScreen):
             ),
             "MCP_ALLOW_VIDEO_PROCESSING": str(
                 self.query_one("#settings-mcp-video-processing", Select).value
+            ),
+            "MCP_ALLOW_TOOL_INGESTION": str(
+                self.query_one("#settings-mcp-tool-ingestion", Select).value
             ),
         }
         errors = validate_settings_form(new_values)

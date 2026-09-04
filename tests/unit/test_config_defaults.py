@@ -28,6 +28,7 @@ from src.core.config_defaults import (
     scope_of,
     tech_scout_db_path,
     mcp_allow_approvals,
+    mcp_allow_tool_ingestion,
     mcp_allow_video_processing,
 )
 
@@ -167,7 +168,10 @@ class TestScopeOf:
         for key in RESTART_KEYS:
             assert scope_of(key) == Scope.RESTART
 
-    @pytest.mark.parametrize("key", ["MCP_ALLOW_APPROVALS", "MCP_ALLOW_VIDEO_PROCESSING"])
+    @pytest.mark.parametrize(
+        "key",
+        ["MCP_ALLOW_APPROVALS", "MCP_ALLOW_VIDEO_PROCESSING", "MCP_ALLOW_TOOL_INGESTION"],
+    )
     def test_mcp_write_flags_map_to_mcp_restart_scope(self, key):
         # A distinct scope from RESTART: restarting the TUI does nothing
         # for these — the process that needs restarting is the external
@@ -232,6 +236,20 @@ class TestMcpAllowVideoProcessing:
     def test_any_other_value_is_false(self, monkeypatch):
         monkeypatch.setenv("MCP_ALLOW_VIDEO_PROCESSING", "1")
         assert mcp_allow_video_processing() is False
+
+
+class TestMcpAllowToolIngestion:
+    def test_defaults_to_false_when_unset(self, monkeypatch):
+        monkeypatch.delenv("MCP_ALLOW_TOOL_INGESTION", raising=False)
+        assert mcp_allow_tool_ingestion() is False
+
+    def test_true_case_insensitive(self, monkeypatch):
+        monkeypatch.setenv("MCP_ALLOW_TOOL_INGESTION", "True")
+        assert mcp_allow_tool_ingestion() is True
+
+    def test_any_other_value_is_false(self, monkeypatch):
+        monkeypatch.setenv("MCP_ALLOW_TOOL_INGESTION", "1")
+        assert mcp_allow_tool_ingestion() is False
 
 
 class TestProviderWiring:

@@ -116,6 +116,40 @@ class TestListToolsCatalogTool:
         assert {r["name"] for r in results} == {"Redis", "PostgreSQL"}
 
 
+class TestSearchToolsCatalogTool:
+    def test_wraps_semantic_search_and_returns_dicts(self, patched_db):
+        from src.db.database import Tool
+        from src.mcp import tools
+        from src.processing import tool_extractor
+
+        t1 = patched_db.create_tool(
+            Tool(id=None, name="Chroma", normalized_name="chroma", description="Vector DB")
+        )
+
+        mock_store = MagicMock()
+        mock_store.search = AsyncMock(return_value=[(t1.id, 0.1)])
+        mock_store_cls = MagicMock(return_value=mock_store)
+
+        with patch.object(tool_extractor, "ToolsCatalogStore", mock_store_cls):
+            results = asyncio.run(tools.search_tools_catalog("vector database"))
+
+        assert all(isinstance(r, dict) for r in results)
+        assert results[0]["name"] == "Chroma"
+
+    def test_empty_store_result_returns_empty_list(self, patched_db):
+        from src.mcp import tools
+        from src.processing import tool_extractor
+
+        mock_store = MagicMock()
+        mock_store.search = AsyncMock(return_value=[])
+        mock_store_cls = MagicMock(return_value=mock_store)
+
+        with patch.object(tool_extractor, "ToolsCatalogStore", mock_store_cls):
+            results = asyncio.run(tools.search_tools_catalog("nothing matches"))
+
+        assert results == []
+
+
 class TestSemanticSearchTool:
     def test_semantic_search_empty_without_openai_key(self, monkeypatch):
         """Spec: Graceful RAG degradation — missing OPENAI_API_KEY scenario.
@@ -458,3 +492,45 @@ class TestGetSessionTool:
 
         assert result["session"] is None
         assert result["segments"] == []
+
+
+class TestSaveToolTool:
+    """save_tool never fetches a URL or calls an LLM — it's storage only,
+    same contract as src.processing.tool_extractor.save_researched_tool."""
+
+    def test_creates_new_tool_and_returns_ok_true(self, patched_db, monkeypatch):
+        from src.mcp import tools
+
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+
+        result = asyncio.run(
+            tools.save_tool("Redis", category="Cache", description="In-memory store")
+        )
+
+        assert result["ok"] is True
+        assert result["created"] is True
+        assert result["name"] == "Redis"
+        tool = patched_db.find_tool_by_name("Redis")
+        assert tool is not None
+        assert tool.category == "Cache"
+
+    def test_dedup_hit_returns_created_false_without_overwriting(self, patched_db, monkeypatch):
+        from src.db.database import Tool
+        from src.mcp import tools
+
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+        existing = patched_db.create_tool(
+            Tool(id=None, name="Redis", normalized_name="redis", description="Original")
+        )
+
+        result = asyncio.run(tools.save_tool("Redis", description="A different description"))
+
+        assert result == {"ok": True, "created": False, "tool_id": existing.id, "name": "Redis"}
+        assert patched_db.find_tool_by_name("Redis").description == "Original"
+
+    def test_empty_name_returns_ok_false_instead_of_raising(self, patched_db):
+        from src.mcp import tools
+
+        result = asyncio.run(tools.save_tool("   "))
+
+        assert result == {"ok": False, "error": "name is required"}

@@ -22,6 +22,7 @@ from src.agent import commands as agent_commands
 from src.db import database
 from src.mcp import queries as mcp_queries
 from src.processing.search_indexer import search_segments_semantic
+from src.processing.tool_extractor import search_tools as search_tools_semantic
 
 
 async def search_content(
@@ -68,6 +69,15 @@ async def list_tools_catalog(name_query: Optional[str] = None) -> list[dict]:
         needle = name_query.strip().lower()
         results = [r for r in results if needle in r["name"].lower()]
     return results
+
+
+async def search_tools_catalog(query: str, top_k: int = 5) -> list[dict]:
+    """Semantic (embedding-based) search over the Tools Catalog — distinct
+    from `list_tools_catalog`'s literal name-substring filter. Best-effort:
+    returns `[]` without `OPENAI_API_KEY`/chromadb, same graceful-degradation
+    contract as `semantic_search` (segments)."""
+    tools_list = await search_tools_semantic(query, top_k=top_k)
+    return [asdict(t) for t in tools_list]
 
 
 def _find_pending(pending_id: int):
@@ -257,3 +267,34 @@ async def semantic_search(query: str, top_k: int = 5) -> list[dict]:
     (`src/rag/base.py`), so no extra try/except is added here — one would
     only risk masking a real bug."""
     return await search_segments_semantic(query, top_k=top_k)
+
+
+async def save_tool(
+    name: str,
+    category: str = "",
+    description: str = "",
+    summary: str = "",
+    tags: Optional[list[str]] = None,
+    source_url: str = "",
+) -> dict:
+    """The server's third write surface — off by default, only registered
+    when `MCP_ALLOW_TOOL_INGESTION=true`. Persists a tool record already
+    researched/structured by the calling agent's own LLM —
+    `src.processing.tool_extractor.save_researched_tool` never fetches a
+    URL or calls an LLM itself, it's pure storage + semantic indexing.
+    Returns `{"ok": False, "error": ...}` for an empty name instead of
+    letting the `ValueError` cross the MCP boundary as a raw
+    protocol-level failure."""
+    from src.processing.tool_extractor import save_researched_tool
+
+    def _sync() -> dict:
+        try:
+            tool, created = save_researched_tool(
+                name, category=category, description=description,
+                summary=summary, tags=tags, source_url=source_url,
+            )
+            return {"ok": True, "created": created, "tool_id": tool.id, "name": tool.name}
+        except ValueError as e:
+            return {"ok": False, "error": str(e)}
+
+    return await asyncio.to_thread(_sync)
