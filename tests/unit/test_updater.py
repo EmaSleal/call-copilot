@@ -12,6 +12,9 @@ from unittest.mock import MagicMock
 import pytest
 
 from src.core.updater import (
+    _hermes_cli_available,
+    _hermes_has_call_copilot_registered,
+    _offer_hermes_connection,
     _pipx_venvs_dir,
     build_pip_spec,
     get_installed_commit,
@@ -441,6 +444,14 @@ class TestRunInstallMcp:
     rebuilds its pip spec from that same file, so skipping the persist
     would silently drop the extra on the next `call-copilot update`."""
 
+    @pytest.fixture(autouse=True)
+    def _no_hermes_offer(self, monkeypatch):
+        """Isolates pip-install behavior from the Hermes-connection offer
+        (_offer_hermes_connection has its own dedicated tests below) —
+        otherwise these tests would depend on whether `hermes` happens to
+        be on PATH on the machine running the suite."""
+        monkeypatch.setattr("src.core.updater._offer_hermes_connection", lambda: None)
+
     def test_dev_checkout_pip_installs_into_current_venv(self, monkeypatch):
         monkeypatch.setattr("src.core.updater._is_dev_checkout", lambda: True)
         mock_run = MagicMock(return_value=MagicMock(returncode=0))
@@ -510,6 +521,105 @@ class TestRunInstallMcp:
         monkeypatch.setattr("src.core.updater.subprocess.run", _raise)
 
         assert run_install_mcp() == 1
+
+
+# ─────────────────────────────────────────────────────────────
+# _offer_hermes_connection() — bonus step after a successful `install-mcp`:
+# registers call-copilot as an MCP server in Hermes via `hermes mcp add`,
+# never by rewriting ~/.hermes/config.yaml directly.
+# ─────────────────────────────────────────────────────────────
+
+class TestHermesCliAvailable:
+    def test_true_when_on_path(self, monkeypatch):
+        monkeypatch.setattr("src.core.updater.shutil.which", lambda name: "/usr/bin/hermes")
+        assert _hermes_cli_available() is True
+
+    def test_false_when_not_on_path(self, monkeypatch):
+        monkeypatch.setattr("src.core.updater.shutil.which", lambda name: None)
+        assert _hermes_cli_available() is False
+
+
+class TestHermesHasCallCopilotRegistered:
+    def test_true_when_name_appears_in_listing(self, monkeypatch):
+        mock_run = MagicMock(return_value=MagicMock(
+            stdout="  codegraph  ...\n  call-copilot  ...\n", returncode=0,
+        ))
+        monkeypatch.setattr("src.core.updater.subprocess.run", mock_run)
+        assert _hermes_has_call_copilot_registered() is True
+
+    def test_false_when_name_absent(self, monkeypatch):
+        mock_run = MagicMock(return_value=MagicMock(
+            stdout="  codegraph  ...\n  context7  ...\n", returncode=0,
+        ))
+        monkeypatch.setattr("src.core.updater.subprocess.run", mock_run)
+        assert _hermes_has_call_copilot_registered() is False
+
+    def test_false_when_hermes_binary_missing(self, monkeypatch):
+        def _raise(*a, **k):
+            raise FileNotFoundError()
+        monkeypatch.setattr("src.core.updater.subprocess.run", _raise)
+        assert _hermes_has_call_copilot_registered() is False
+
+
+class TestOfferHermesConnection:
+    def test_noop_when_hermes_not_installed(self, monkeypatch, capsys):
+        monkeypatch.setattr("src.core.updater._hermes_cli_available", lambda: False)
+        mock_run = MagicMock()
+        monkeypatch.setattr("src.core.updater.subprocess.run", mock_run)
+
+        _offer_hermes_connection()
+
+        mock_run.assert_not_called()
+        assert capsys.readouterr().out == ""
+
+    def test_noop_when_already_registered(self, monkeypatch, capsys):
+        monkeypatch.setattr("src.core.updater._hermes_cli_available", lambda: True)
+        monkeypatch.setattr("src.core.updater._hermes_has_call_copilot_registered", lambda: True)
+        mock_run = MagicMock()
+        monkeypatch.setattr("src.core.updater.subprocess.run", mock_run)
+
+        _offer_hermes_connection()
+
+        mock_run.assert_not_called()
+        assert "ya tiene" in capsys.readouterr().out
+
+    def test_declining_the_prompt_does_not_register(self, monkeypatch):
+        monkeypatch.setattr("src.core.updater._hermes_cli_available", lambda: True)
+        monkeypatch.setattr("src.core.updater._hermes_has_call_copilot_registered", lambda: False)
+        monkeypatch.setattr("builtins.input", lambda prompt="": "n")
+        mock_run = MagicMock()
+        monkeypatch.setattr("src.core.updater.subprocess.run", mock_run)
+
+        _offer_hermes_connection()
+
+        mock_run.assert_not_called()
+
+    def test_accepting_the_prompt_registers_without_env_override(self, monkeypatch):
+        """No --env MCP_ALLOW_TOOL_INGESTION here — that write-gate stays
+        controlled by call-copilot's own Settings toggle, independent of
+        whether Hermes is connected."""
+        monkeypatch.setattr("src.core.updater._hermes_cli_available", lambda: True)
+        monkeypatch.setattr("src.core.updater._hermes_has_call_copilot_registered", lambda: False)
+        monkeypatch.setattr("builtins.input", lambda prompt="": "y")
+        mock_run = MagicMock(return_value=MagicMock(returncode=0))
+        monkeypatch.setattr("src.core.updater.subprocess.run", mock_run)
+
+        _offer_hermes_connection()
+
+        mock_run.assert_called_once_with(
+            ["hermes", "mcp", "add", "call-copilot", "--command", "call-copilot-mcp"]
+        )
+
+    def test_registration_failure_does_not_raise(self, monkeypatch, capsys):
+        monkeypatch.setattr("src.core.updater._hermes_cli_available", lambda: True)
+        monkeypatch.setattr("src.core.updater._hermes_has_call_copilot_registered", lambda: False)
+        monkeypatch.setattr("builtins.input", lambda prompt="": "y")
+        mock_run = MagicMock(return_value=MagicMock(returncode=1))
+        monkeypatch.setattr("src.core.updater.subprocess.run", mock_run)
+
+        _offer_hermes_connection()
+
+        assert "No se pudo" in capsys.readouterr().out
 
 
 # ─────────────────────────────────────────────────────────────
