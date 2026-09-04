@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.11.0](https://github.com/EmaSleal/call-copilot/compare/v0.10.2...v0.11.0) (2026-09-04)
+
+
+### Features
+
+* **cli:** offer to connect Hermes after installing the mcp extra ([0513b9d](https://github.com/EmaSleal/call-copilot/commit/0513b9d2d2c9df1545a6569dee7e9bac18ab369d))
+* **mcp:** expose tool save/search over MCP, gated by an opt-in flag ([8efba5b](https://github.com/EmaSleal/call-copilot/commit/8efba5b5c61f926e96548a05b549055da20c5782))
+* native tool storage + MCP save/search + Hermes install offer ([c6e6c4f](https://github.com/EmaSleal/call-copilot/commit/c6e6c4fe1267439419c5211168dd7652a207f0ac))
+* **tools:** add native tool storage with a manual add form ([0cf4651](https://github.com/EmaSleal/call-copilot/commit/0cf4651c0c318bf9fb5599bcecd0b36bb31dcc01))
+
 ## [0.10.2](https://github.com/EmaSleal/call-copilot/compare/v0.10.1...v0.10.2) (2026-09-03)
 
 
