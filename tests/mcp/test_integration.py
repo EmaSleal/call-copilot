@@ -19,6 +19,7 @@ class TestServerToolRegistration:
         discoverable without opting in."""
         monkeypatch.delenv("MCP_ALLOW_APPROVALS", raising=False)
         monkeypatch.delenv("MCP_ALLOW_VIDEO_PROCESSING", raising=False)
+        monkeypatch.delenv("MCP_ALLOW_TOOL_INGESTION", raising=False)
         from src.mcp.server import build_server
 
         server = build_server()
@@ -29,6 +30,7 @@ class TestServerToolRegistration:
             "search_content",
             "list_categories",
             "list_tools_catalog",
+            "search_tools_catalog",
             "get_session",
             "semantic_search",
             "list_reports",
@@ -89,4 +91,44 @@ class TestServerToolRegistration:
         names = {tool.name for tool in asyncio.run(server.list_tools())}
 
         assert "approve_pending_action" in names
+        assert "start_video_processing" not in names
+
+    def test_server_adds_save_tool_when_explicitly_enabled(self, monkeypatch):
+        monkeypatch.setenv("MCP_ALLOW_TOOL_INGESTION", "true")
+        from src.mcp.server import build_server
+
+        server = build_server()
+        names = {tool.name for tool in asyncio.run(server.list_tools())}
+
+        assert "save_tool" in names
+
+    def test_server_keeps_save_tool_off_by_default(self, monkeypatch):
+        monkeypatch.delenv("MCP_ALLOW_TOOL_INGESTION", raising=False)
+        from src.mcp.server import build_server
+
+        server = build_server()
+        names = {tool.name for tool in asyncio.run(server.list_tools())}
+
+        assert "save_tool" not in names
+
+    def test_server_keeps_save_tool_off_for_any_other_value(self, monkeypatch):
+        monkeypatch.setenv("MCP_ALLOW_TOOL_INGESTION", "1")
+        from src.mcp.server import build_server
+
+        server = build_server()
+        names = {tool.name for tool in asyncio.run(server.list_tools())}
+
+        assert "save_tool" not in names
+
+    def test_tool_ingestion_flag_is_independent_of_other_write_flags(self, monkeypatch):
+        monkeypatch.setenv("MCP_ALLOW_TOOL_INGESTION", "true")
+        monkeypatch.delenv("MCP_ALLOW_APPROVALS", raising=False)
+        monkeypatch.delenv("MCP_ALLOW_VIDEO_PROCESSING", raising=False)
+        from src.mcp.server import build_server
+
+        server = build_server()
+        names = {tool.name for tool in asyncio.run(server.list_tools())}
+
+        assert "save_tool" in names
+        assert "approve_pending_action" not in names
         assert "start_video_processing" not in names

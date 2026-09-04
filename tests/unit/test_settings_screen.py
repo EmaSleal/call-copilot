@@ -159,6 +159,10 @@ class TestSummarizeScopes:
         result = summarize_scopes(["MCP_ALLOW_VIDEO_PROCESSING"])
         assert "MCP" in result["MCP_ALLOW_VIDEO_PROCESSING"]
 
+    def test_mcp_allow_tool_ingestion_maps_to_the_same_mcp_badge(self, spanish):
+        result = summarize_scopes(["MCP_ALLOW_TOOL_INGESTION"])
+        assert "MCP" in result["MCP_ALLOW_TOOL_INGESTION"]
+
 
 # ---------------------------------------------------------------------------
 # key_to_provider() — PR2: maps a saved API-key env var to the model_catalog

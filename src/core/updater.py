@@ -195,6 +195,60 @@ def run_uninstall() -> int:
     return result.returncode
 
 
+def _hermes_cli_available() -> bool:
+    """Whether the `hermes` CLI (Hermes Agent) is on PATH."""
+    return shutil.which("hermes") is not None
+
+
+def _hermes_has_call_copilot_registered() -> bool:
+    """Whether an MCP server named 'call-copilot' is already registered in
+    Hermes. Checked via `hermes mcp list` rather than reading
+    ~/.hermes/config.yaml directly — that file is hand-edited YAML with
+    comments Hermes itself owns; parsing/rewriting it here would be fragile
+    and could drift from whatever schema Hermes uses internally."""
+    try:
+        result = subprocess.run(
+            ["hermes", "mcp", "list"], capture_output=True, text=True,
+        )
+    except FileNotFoundError:
+        return False
+    return "call-copilot" in result.stdout
+
+
+def _offer_hermes_connection() -> None:
+    """After a successful `mcp` extra install, offer to register
+    `call-copilot-mcp` as an MCP server in Hermes via `hermes mcp add` —
+    Hermes's own sanctioned way to edit its config, never a direct YAML
+    rewrite. No-ops silently if Hermes isn't installed or already has
+    call-copilot registered — this is a bonus offer, not a required step.
+
+    Deliberately does NOT pass MCP_ALLOW_TOOL_INGESTION as an --env
+    override here: that write-gate stays controlled by call-copilot's own
+    Settings toggle (src/tui/screens/settings.py), independent of whether
+    Hermes is connected — connecting the server and allowing it to write
+    are two separate decisions."""
+    if not _hermes_cli_available():
+        return
+    if _hermes_has_call_copilot_registered():
+        print("\nHermes ya tiene 'call-copilot' registrado como MCP server.")
+        return
+
+    answer = input(
+        "\nSe detectó Hermes instalado. ¿Conectar call-copilot como MCP "
+        "server ahora? (y/N): "
+    ).strip().lower()
+    if answer not in ("y", "s", "si", "sí", "yes"):
+        return
+
+    result = subprocess.run(
+        ["hermes", "mcp", "add", "call-copilot", "--command", "call-copilot-mcp"]
+    )
+    if result.returncode == 0:
+        print("Listo — Hermes ya puede usar call-copilot como MCP server.")
+    else:
+        print("No se pudo registrar el server en Hermes (ver salida arriba).")
+
+
 def run_install_mcp() -> int:
     """Adds the `mcp` extra (the read-only MCP server, `call-copilot-mcp`)
     to an existing install without a full reinstall.
@@ -217,6 +271,7 @@ def run_install_mcp() -> int:
             return 1
         if result.returncode == 0:
             print("Listo — corré 'call-copilot-mcp' para arrancar el servidor MCP.")
+            _offer_hermes_connection()
         return result.returncode
 
     print("Instalando el extra 'mcp' sobre el call-copilot ya instalado...")
@@ -235,6 +290,7 @@ def run_install_mcp() -> int:
 
     print("\nListo — 'call-copilot-mcp' ya está disponible como comando.")
     print("Configurá tu cliente MCP (ej. Claude Desktop) para lanzarlo como servidor stdio.")
+    _offer_hermes_connection()
     return 0
 
 

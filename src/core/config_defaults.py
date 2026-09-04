@@ -56,6 +56,7 @@ _SCOPE_MAP: dict[str, Scope] = {
     "SILENCE_THRESHOLD_MS": Scope.RESTART,
     "MCP_ALLOW_APPROVALS": Scope.MCP_RESTART,
     "MCP_ALLOW_VIDEO_PROCESSING": Scope.MCP_RESTART,
+    "MCP_ALLOW_TOOL_INGESTION": Scope.MCP_RESTART,
 }
 
 
@@ -135,6 +136,12 @@ def mcp_allow_video_processing() -> bool:
     write tools are enabled. Off by default — same parsing as
     src/mcp/server.py's own gate."""
     return os.getenv("MCP_ALLOW_VIDEO_PROCESSING", "false").lower() == "true"
+
+
+def mcp_allow_tool_ingestion() -> bool:
+    """Whether the MCP server's save_tool write tool is enabled. Off by
+    default — same parsing as src/mcp/server.py's own gate."""
+    return os.getenv("MCP_ALLOW_TOOL_INGESTION", "false").lower() == "true"
 
 
 def scope_of(key: str) -> Scope:

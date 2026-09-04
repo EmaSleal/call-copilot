@@ -33,6 +33,7 @@ ES_STRINGS: dict[str, str] = {
     "settings.scope_mcp_restart": "requiere reiniciar tu cliente MCP (ej. Claude Desktop)",
     "settings.mcp_approvals_label": "MCP — permitir aprobar/rechazar deletes:",
     "settings.mcp_video_processing_label": "MCP — permitir procesar video:",
+    "settings.mcp_tool_ingestion_label": "MCP — permitir guardar tools (ej. desde Hermes):",
     "settings.sync_feedback": "Sincronizado. {imported} nuevas, {skipped} ya existían.",
     "settings.close_binding": "Cerrar",
 
@@ -146,6 +147,15 @@ ES_STRINGS: dict[str, str] = {
     "tools.column_summary": "Resumen",
     "tools.none_detected": "Todavía no se detectaron tecnologías.",
     "tools.no_results": "Sin resultados para «{query}».",
+    "tools.add_name_placeholder": "Nombre (obligatorio)",
+    "tools.add_category_placeholder": "Categoría",
+    "tools.add_tags_placeholder": "Tags (separados por coma)",
+    "tools.add_description_placeholder": "Descripción",
+    "tools.add_url_placeholder": "URL / repo",
+    "tools.add_button": "Agregar",
+    "tools.add_name_required": "El nombre es obligatorio.",
+    "tools.add_success": "«{name}» agregado al catálogo.",
+    "tools.add_dedup_hit": "«{name}» ya existe en el catálogo — no se modificó.",
 
     # pending_actions.py — PendingActionsTab
     "pending_actions.tab_title": "⏳ Aprobaciones",

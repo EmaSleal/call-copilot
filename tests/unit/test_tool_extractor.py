@@ -460,3 +460,101 @@ class TestImportFromTechScout:
             tool_extractor.import_from_tech_scout(str(tech_scout_db))
 
         assert mock_store.add_tool.await_count == 2
+
+
+# ─────────────────────────────────────────────────────────────
+# save_researched_tool() — pure storage for a record already researched/
+# structured upstream (e.g. by Hermes's own LLM/agent) — no fetch, no LLM.
+# ─────────────────────────────────────────────────────────────
+
+class TestSaveResearchedTool:
+    def test_creates_new_tool_and_returns_created_true(self, patched_db, no_openai_key):
+        from src.processing import tool_extractor
+
+        tool, created = tool_extractor.save_researched_tool(
+            "Chroma", category="Vector DB", description="Embedding database",
+            summary="Used for RAG", tags=["vector", "rag"],
+        )
+
+        assert created is True
+        assert tool.name == "Chroma"
+        assert tool.normalized_name == "chroma"
+        assert tool.category == "Vector DB"
+        assert tool.summary == "Used for RAG"
+        assert json.loads(tool.tags) == ["vector", "rag"]
+        assert patched_db.get_tools() == [tool]
+
+    def test_dedup_hit_returns_existing_and_never_overwrites(self, patched_db, no_openai_key):
+        from src.db.database import Tool
+        from src.processing import tool_extractor
+
+        existing = patched_db.create_tool(
+            Tool(id=None, name="Chroma", normalized_name="chroma",
+                 description="Original description")
+        )
+
+        tool, created = tool_extractor.save_researched_tool(
+            "Chroma", description="A different description",
+        )
+
+        assert created is False
+        assert tool.id == existing.id
+        assert tool.description == "Original description"
+        assert len(patched_db.get_tools()) == 1
+
+    def test_source_url_folded_into_description(self, patched_db, no_openai_key):
+        from src.processing import tool_extractor
+
+        tool, _ = tool_extractor.save_researched_tool(
+            "ripgrep", description="Fast grep replacement",
+            source_url="https://github.com/BurntSushi/ripgrep",
+        )
+
+        assert tool.description == (
+            "Fast grep replacement (https://github.com/BurntSushi/ripgrep)"
+        )
+
+    def test_tags_default_to_empty_list_when_omitted(self, patched_db, no_openai_key):
+        from src.processing import tool_extractor
+
+        tool, _ = tool_extractor.save_researched_tool("SuiteCRM")
+
+        assert json.loads(tool.tags) == []
+
+    def test_empty_name_raises_value_error(self, patched_db, no_openai_key):
+        from src.processing import tool_extractor
+
+        with pytest.raises(ValueError):
+            tool_extractor.save_researched_tool("   ")
+
+    def test_embeds_new_tool_when_openai_key_present(self, patched_db, with_openai_key):
+        from src.processing import tool_extractor
+
+        mock_store = MagicMock()
+        mock_store.add_tool = AsyncMock(return_value=True)
+        mock_store_cls = MagicMock(return_value=mock_store)
+
+        with patch.object(tool_extractor, "ToolsCatalogStore", mock_store_cls):
+            tool, created = tool_extractor.save_researched_tool("Chroma")
+
+        assert created is True
+        mock_store.add_tool.assert_awaited_once()
+        args, _ = mock_store.add_tool.call_args
+        assert args[0] == tool.id
+
+    def test_dedup_hit_does_not_call_embed(self, patched_db, with_openai_key):
+        from src.db.database import Tool
+        from src.processing import tool_extractor
+
+        patched_db.create_tool(
+            Tool(id=None, name="Chroma", normalized_name="chroma")
+        )
+
+        mock_store = MagicMock()
+        mock_store.add_tool = AsyncMock(return_value=True)
+        mock_store_cls = MagicMock(return_value=mock_store)
+
+        with patch.object(tool_extractor, "ToolsCatalogStore", mock_store_cls):
+            tool_extractor.save_researched_tool("Chroma")
+
+        mock_store.add_tool.assert_not_awaited()
