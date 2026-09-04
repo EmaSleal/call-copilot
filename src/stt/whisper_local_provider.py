@@ -63,21 +63,31 @@ class WhisperLocalSTT(STTProvider):
     async def _transcribe(self, audio: np.ndarray) -> None:
         # faster-whisper es sync/bloqueante -> correrlo en thread pool
         # para no congelar el event loop mientras procesa en GPU.
-        loop = asyncio.get_event_loop()
-        segments, _ = await loop.run_in_executor(
-            None,
-            lambda: self.model.transcribe(
-                audio,
-                language=self.language,
-                beam_size=1,
-                vad_filter=True,
-                vad_parameters=dict(min_silence_duration_ms=300),
-            ),
-        )
-        for seg in segments:
-            await self._transcript_queue.put(
-                TranscriptSegment(text=seg.text.strip(), is_final=True)
+        #
+        # send_audio() lanza esto como fire-and-forget (asyncio.create_task,
+        # nunca awaited) — sin este try/except, cualquier excepción acá
+        # (ej. una librería CUDA faltante) desaparece silenciosamente como
+        # "Task exception was never retrieved" recién cuando el garbage
+        # collector junta la task, sin avisarle nada al usuario ni dejar un
+        # traceback inmediato y legible en el log.
+        try:
+            loop = asyncio.get_event_loop()
+            segments, _ = await loop.run_in_executor(
+                None,
+                lambda: self.model.transcribe(
+                    audio,
+                    language=self.language,
+                    beam_size=1,
+                    vad_filter=True,
+                    vad_parameters=dict(min_silence_duration_ms=300),
+                ),
             )
+            for seg in segments:
+                await self._transcript_queue.put(
+                    TranscriptSegment(text=seg.text.strip(), is_final=True)
+                )
+        except Exception:
+            logger.exception("whisper local transcription failed")
 
     def transcripts(self) -> AsyncIterator[TranscriptSegment]:
         return self._iter_queue()

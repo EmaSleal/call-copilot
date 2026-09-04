@@ -39,7 +39,21 @@ dependencies = [
 [project.optional-dependencies]
 # Local Whisper STT backend (STT_BACKEND=whisper_local) — alternative to the
 # default Deepgram (cloud, already covered by the base `websockets` dep).
-whisper-local = ["faster-whisper>=1.0"]
+# faster-whisper's CTranslate2 backend needs CUDA 12's cuBLAS/cuDNN
+# specifically (libcublas.so.12 / libcudnn.so.9) regardless of whichever
+# CUDA build the base `torch` dependency itself happens to resolve to (its
+# own bundled CUDA runtime can be a different major version, e.g. cu13, and
+# the two coexist fine — different sonames, no conflict). Pinned explicitly
+# here rather than left to transitively ride along with torch: confirmed
+# empirically that an unconstrained resolution can pick a torch build with
+# no cu12 libs at all, leaving faster-whisper crashing on every single
+# transcription attempt with "Library libcublas.so.12 is not found". Not
+# relevant on macOS — Apple dropped CUDA support entirely.
+whisper-local = [
+    "faster-whisper>=1.0",
+    "nvidia-cublas-cu12>=12.0; sys_platform != 'darwin'",
+    "nvidia-cudnn-cu12>=9.0; sys_platform != 'darwin'",
+]
 # YouTube/video download + batch transcription (Video tab). imageio-ffmpeg
 # bundles a portable ffmpeg binary — no system install / PATH entry needed.
 video = ["yt-dlp>=2024.1.0", "openai-whisper>=20231117", "imageio-ffmpeg>=0.5.0"]
