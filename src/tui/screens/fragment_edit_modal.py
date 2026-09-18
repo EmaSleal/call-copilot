@@ -15,14 +15,21 @@ from src.i18n import t
 
 
 def _update_fragment_category(source: str, fragment_id: int, category_id: int) -> None:
-    """Dispatch to the right DAO based on source — segments.id and
-    call_segments.id are independent sequences (video/call), so the
-    source tag from the fragment's composite row key decides which
-    table to write to."""
+    """Dispatch to the right DAO based on source — segments.id,
+    call_segments.id and note_segments.id are INDEPENDENT AUTOINCREMENT
+    sequences that can collide, so the source tag from the fragment's
+    composite row key decides which table to write to. An `else` fallback
+    here would silently write a note's id into call_segments and corrupt an
+    unrelated call fragment; unknown sources fail closed instead (same
+    pattern as src/agent/catalog_commands.py::_reassign_segment_category)."""
     if source == "video":
         db.update_segment_category(fragment_id, category_id)
-    else:
+    elif source == "call":
         db.update_call_segment_category(fragment_id, category_id)
+    elif source == "note":
+        db.update_note_segment_category(fragment_id, category_id)
+    else:
+        raise ValueError(f"unknown source: {source!r} (expected 'video', 'call' or 'note')")
 
 
 class FragmentEditModal(ModalScreen):

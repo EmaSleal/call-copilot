@@ -85,6 +85,7 @@ def delete_category(cat_id: int, actor: str = "human") -> None:
         # Desasignar segmentos/fragmentos que usaban esta categoría antes de borrar
         conn.execute("UPDATE segments SET category_id=NULL WHERE category_id=?", (cat_id,))
         conn.execute("UPDATE call_segments SET category_id=NULL WHERE category_id=?", (cat_id,))
+        conn.execute("UPDATE note_segments SET category_id=NULL WHERE category_id=?", (cat_id,))
         # Promover hijos a nivel superior en vez de cascadear el borrado (D2)
         conn.execute("UPDATE categories SET parent_id=NULL WHERE parent_id=?", (cat_id,))
         conn.execute(

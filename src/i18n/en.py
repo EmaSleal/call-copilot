@@ -185,6 +185,7 @@ EN_STRINGS: dict[str, str] = {
     "historial.column_category": "Category",
     "historial.source_video": "Video",
     "historial.source_call": "Call",
+    "historial.source_note": "Note",
     "historial.no_sessions": "No sessions processed yet.",
     "historial.no_fragments": "This session has no processed fragments yet.",
 

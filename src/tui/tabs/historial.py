@@ -17,6 +17,24 @@ def _titled_sessions(sessions: list) -> list:
     return [s for s in sessions if s.title]
 
 
+_SOURCE_LABEL_KEYS = {
+    "video": "historial.source_video",
+    "call": "historial.source_call",
+    "note": "historial.source_note",
+}
+
+
+def _source_label(source: str) -> str:
+    """Translated label for a unified-session source. Unknown sources fall
+    back to the raw tag rather than silently claiming to be a call — the
+    binary ternary this replaces mislabeled every note row as "Call".
+
+    Pure function — no side effects, easy to test without Textual.
+    """
+    key = _SOURCE_LABEL_KEYS.get(source)
+    return t(key) if key else source
+
+
 def _parse_session_row_key(key: str) -> tuple[str, int]:
     """Split a Historial session row key ("video:3" / "call:12") into (source, id).
 
@@ -121,7 +139,7 @@ class HistorialTab(TabPane):
             return
         self.query_one("#historial-status", Label).update("")
         for s in sessions:
-            source_label = t("historial.source_video") if s.source == "video" else t("historial.source_call")
+            source_label = _source_label(s.source)
             date_display = (s.created_at or "")[:16]
             table.add_row(
                 str(s.id),

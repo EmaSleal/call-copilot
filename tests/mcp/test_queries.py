@@ -214,6 +214,50 @@ class TestSearchContentTechnologyFilter:
         assert results == []
 
 
+class TestSearchContentTechnologyMatchesNotes:
+    """Fix #5, widened per explicit decision: the LIKE fallback branch must
+    match note segments too, not just video — `_technology_clause` gates on
+    `source != "call"`, so its SQL predicate must cover every non-call
+    source, not hardcode 'video'."""
+
+    def test_technology_matched_via_text_fallback_for_note(self, patched_db):
+        from src.db.note_sessions import create_note_session
+        from src.db.note_segments import NoteSegment, save_note_segment
+        from src.mcp.queries import search_content
+
+        note = create_note_session(title="GPU Notes")
+        save_note_segment(
+            NoteSegment(id=None, note_id=note.id, sort_order=0, text="...usamos Redis para cache...")
+        )
+
+        results = search_content(technology="Redis", source="note")
+
+        assert len(results) == 1
+        assert results[0]["source"] == "note"
+        assert "Redis" in results[0]["matched_text"]
+
+    def test_technology_unscoped_matches_both_video_and_note(self, patched_db):
+        from src.db.database import Segment
+        from src.db.note_sessions import create_note_session
+        from src.db.note_segments import NoteSegment, save_note_segment
+        from src.mcp.queries import search_content
+
+        video_session = patched_db.create_video_session(title="Video 1", url="http://x")
+        patched_db.save_segment(
+            Segment(id=None, session_id=video_session.id, start_s=0.0, end_s=1.0,
+                    text="...usamos Redis para...")
+        )
+        note = create_note_session(title="Note")
+        save_note_segment(
+            NoteSegment(id=None, note_id=note.id, sort_order=0, text="Redis notes")
+        )
+
+        results = search_content(technology="Redis")
+
+        sources = {r["source"] for r in results}
+        assert sources == {"video", "note"}
+
+
 class TestSearchContentDefaultBound:
     def test_no_filters_returns_bounded_default_not_unfiltered_scan(self, patched_db):
         from src.db.database import CallSegment

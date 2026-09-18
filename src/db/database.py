@@ -192,6 +192,11 @@ def _recreate_views(conn: sqlite3.Connection) -> None:
                    CAST(sort_order AS REAL) AS position
             FROM call_segments
             WHERE deleted_at IS NULL
+            UNION ALL
+            SELECT id, 'note' AS source, note_id AS session_id, text, category_id,
+                   CAST(sort_order AS REAL) AS position
+            FROM note_segments
+            WHERE deleted_at IS NULL
     """)
 
     conn.execute("DROP VIEW IF EXISTS unified_sessions")
@@ -201,6 +206,9 @@ def _recreate_views(conn: sqlite3.Connection) -> None:
             WHERE deleted_at IS NULL
             UNION ALL
             SELECT id, 'call' AS source, title, created_at FROM call_sessions
+            WHERE deleted_at IS NULL
+            UNION ALL
+            SELECT id, 'note' AS source, title, created_at FROM notes
             WHERE deleted_at IS NULL
     """)
 
