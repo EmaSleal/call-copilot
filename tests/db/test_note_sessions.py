@@ -46,17 +46,28 @@ class TestNormalizeNoteTitle:
             ("React Hooks.", "react hooks"),
         ],
     )
-    def test_normalizes_to_same_key(self, raw, expected):
+    def test_normalizes_to_same_key(self, patched_db, raw, expected):
         """Case, surrounding/internal whitespace and trailing punctuation
-        must all collapse to the same dedup key."""
-        from src.db.note_sessions import normalize_note_title
-        assert normalize_note_title(raw) == expected
+        must all collapse to the same dedup key.
 
-    def test_different_title_produces_different_key(self):
+        Goes through `patched_db.normalize_note_title` (the `src.db.database`
+        front-door aggregator), matching the established convention for
+        pure-function DAO tests (see `test_db_tools.py`'s
+        `patched_db.normalize_tool_name` usage) — not a direct
+        `from src.db.note_sessions import ...`. Importing the submodule
+        directly, before anything has imported `src.db.database` first,
+        trips the repo-wide `database.py` <-> DAO-submodule circular import
+        and leaves other already-imported DAO submodules bound to an
+        orphaned, unpatchable `database` module pointing at the real
+        on-disk DB. Requiring `patched_db` here guarantees `src.db.database`
+        is fully imported and initialized before this test touches any
+        `src.db.note_sessions` symbol."""
+        assert patched_db.normalize_note_title(raw) == expected
+
+    def test_different_title_produces_different_key(self, patched_db):
         """A genuinely different title must NOT collapse to the same key
         as 'React Hooks' — proves this isn't a trivial constant-return."""
-        from src.db.note_sessions import normalize_note_title
-        assert normalize_note_title("React Hook") != normalize_note_title("React Hooks")
+        assert patched_db.normalize_note_title("React Hook") != patched_db.normalize_note_title("React Hooks")
 
 
 # ─────────────────────────────────────────────────────────────
