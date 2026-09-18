@@ -21,6 +21,9 @@ def _semantic_result_row(result: dict) -> tuple[str, str, str, str]:
     if result["source"] == "video":
         origin = t("search.source_video")
         tiempo = _fmt_ts(result.get("start_s", 0.0))
+    elif result["source"] == "note":
+        origin = t("search.source_note")
+        tiempo = "—"
     else:
         origin = t("search.source_call")
         tiempo = "—"

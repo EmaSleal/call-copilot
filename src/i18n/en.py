@@ -199,6 +199,7 @@ EN_STRINGS: dict[str, str] = {
     "search.column_fragment": "Fragment",
     "search.source_video": "Video",
     "search.source_call": "Call",
+    "search.source_note": "Note",
     "search.no_results": "No results.",
     "search.no_results_semantic": "No results (is OPENAI_API_KEY configured?).",
 

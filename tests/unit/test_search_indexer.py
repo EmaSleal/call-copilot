@@ -128,6 +128,67 @@ class TestSearchSegmentsSemantic:
         assert results[1]["text"] == "hablamos de OAuth"
 
     @pytest.mark.asyncio
+    async def test_resolves_note_results(self, patched_db, with_openai_key):
+        """Fix #4 — a note segment indexed via save_note must resolve back
+        to a full row, not be silently dropped like the pre-fix binary
+        video/call branches would do."""
+        from src.db.note_segments import NoteSegment, save_note_segment
+        from src.db.note_sessions import create_note_session
+        from src.processing import search_indexer
+
+        note = create_note_session(title="GPU Notes")
+        note_seg_id = save_note_segment(
+            NoteSegment(id=None, note_id=note.id, sort_order=0, text="usamos CUDA")
+        )
+
+        mock_store = MagicMock()
+        mock_store.search = AsyncMock(return_value=[("note", note_seg_id, 0.1)])
+        mock_store_cls = MagicMock(return_value=mock_store)
+
+        with patch.object(search_indexer, "SegmentsSearchStore", mock_store_cls):
+            results = await search_indexer.search_segments_semantic("CUDA")
+
+        assert len(results) == 1
+        assert results[0]["source"] == "note"
+        assert results[0]["id"] == note_seg_id
+        assert results[0]["text"] == "usamos CUDA"
+        assert results[0]["note_id"] == note.id
+
+    @pytest.mark.asyncio
+    async def test_resolves_a_mix_of_all_three_sources(self, patched_db, with_openai_key):
+        from src.db.database import CallSegment, Segment
+        from src.db.note_segments import NoteSegment, save_note_segment
+        from src.db.note_sessions import create_note_session
+        from src.processing import search_indexer
+
+        video_session = patched_db.create_video_session(title="v", url="http://x")
+        video_seg = patched_db.save_segment(
+            Segment(id=None, session_id=video_session.id, start_s=0.0, end_s=1.0, text="video text")
+        )
+        call_session = patched_db.create_call_session(context="ctx", transcript_path="whisper-text/x.txt")
+        call_seg_id = patched_db.save_call_segment(
+            CallSegment(id=None, call_session_id=call_session.id, sort_order=0, text="call text")
+        )
+        note = create_note_session(title="Notes")
+        note_seg_id = save_note_segment(
+            NoteSegment(id=None, note_id=note.id, sort_order=0, text="note text")
+        )
+
+        mock_store = MagicMock()
+        mock_store.search = AsyncMock(return_value=[
+            ("video", video_seg.id, 0.1),
+            ("call", call_seg_id, 0.2),
+            ("note", note_seg_id, 0.3),
+        ])
+        mock_store_cls = MagicMock(return_value=mock_store)
+
+        with patch.object(search_indexer, "SegmentsSearchStore", mock_store_cls):
+            results = await search_indexer.search_segments_semantic("anything")
+
+        sources = {r["source"] for r in results}
+        assert sources == {"video", "call", "note"}
+
+    @pytest.mark.asyncio
     async def test_no_matches_returns_empty_list(self, patched_db, with_openai_key):
         from src.processing import search_indexer
 

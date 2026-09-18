@@ -199,6 +199,7 @@ ES_STRINGS: dict[str, str] = {
     "search.column_fragment": "Fragmento",
     "search.source_video": "Video",
     "search.source_call": "Llamada",
+    "search.source_note": "Nota",
     "search.no_results": "Sin resultados.",
     "search.no_results_semantic": "Sin resultados (¿OPENAI_API_KEY configurada?).",
 
