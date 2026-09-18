@@ -534,3 +534,61 @@ class TestSaveToolTool:
         result = asyncio.run(tools.save_tool("   "))
 
         assert result == {"ok": False, "error": "name is required"}
+
+
+class TestSaveNoteTool:
+    """save_note never calls an LLM or chunks text — it's storage +
+    semantic indexing only, same contract as
+    src.processing.note_ingestion.save_note."""
+
+    def test_creates_new_note_and_returns_ok_true(self, patched_db, monkeypatch):
+        from src.mcp import tools
+
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+
+        result = asyncio.run(tools.save_note("React Hooks", ["Segment one", "Segment two"]))
+
+        assert result["ok"] is True
+        assert result["created"] is True
+        assert result["title"] == "React Hooks"
+        assert result["segments_added"] == 2
+        stored = patched_db.get_note_segments(result["note_id"])
+        assert [s.text for s in stored] == ["Segment one", "Segment two"]
+
+    def test_same_title_appends_to_existing_note(self, patched_db, monkeypatch):
+        from src.mcp import tools
+
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+
+        first = asyncio.run(tools.save_note("GPU Notes", ["first"]))
+        second = asyncio.run(tools.save_note("  gpu notes ", ["second", "third"]))
+
+        assert first["created"] is True
+        assert second["ok"] is True
+        assert second["created"] is False
+        assert second["note_id"] == first["note_id"]
+        assert second["segments_added"] == 2
+        assert len(patched_db.get_note_sessions()) == 1
+        stored = patched_db.get_note_segments(first["note_id"])
+        assert [s.text for s in stored] == ["first", "second", "third"]
+        assert [s.sort_order for s in stored] == [0, 1, 2]
+
+    def test_empty_segments_returns_ok_false_instead_of_raising(self, patched_db, monkeypatch):
+        from src.mcp import tools
+
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+
+        result = asyncio.run(tools.save_note("Some Title", []))
+
+        assert result == {"ok": False, "error": "segments is required"}
+        assert patched_db.get_note_sessions() == []
+
+    def test_empty_title_returns_ok_false(self, patched_db, monkeypatch):
+        from src.mcp import tools
+
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+
+        result = asyncio.run(tools.save_note("   ", ["a segment"]))
+
+        assert result == {"ok": False, "error": "title is required"}
+        assert patched_db.get_note_sessions() == []

@@ -1,5 +1,5 @@
 """
-Semantic search indexing for video segments and call segments — a third
+Semantic search indexing for video, call and note segments — a third
 Chroma-backed search surface alongside the live in-call RAGStore and the
 Tools Catalog's ToolsCatalogStore. Coexists with (never replaces) the
 existing full-text SQL search (src/db/database.py:search_segments) — this
@@ -13,7 +13,11 @@ import os
 
 from openai import AsyncOpenAI
 
-from src.db.database import get_call_segments_by_ids, get_segments_by_ids
+from src.db.database import (
+    get_call_segments_by_ids,
+    get_note_segments_by_ids,
+    get_segments_by_ids,
+)
 from src.rag.segments_store import SegmentsSearchStore
 
 logger = logging.getLogger("call_copilot.processing.search_indexer")
@@ -55,19 +59,21 @@ def forget_segment_embeddings(source: str, segment_ids: list[int]) -> None:
 
 
 async def search_segments_semantic(query: str, top_k: int = 5) -> list[dict]:
-    """Semantic search across video AND call segments, joined back to full
-    SQL rows. Each result dict has a "source" key ("video"/"call") plus
-    that source's own row fields. A composite id the store returns but
-    that no longer resolves to a real row (deleted session, etc.) is
-    silently dropped."""
+    """Semantic search across video, call and note segments, joined back to
+    full SQL rows. Each result dict has a "source" key ("video"/"call"/
+    "note") plus that source's own row fields. A composite id the store
+    returns but that no longer resolves to a real row (deleted session,
+    etc.) is silently dropped."""
     openai_client = _build_openai_client()
     store = SegmentsSearchStore(openai_client=openai_client)
     ranked = await store.search(query, top_k=top_k)
 
     video_ids = [seg_id for source, seg_id, _ in ranked if source == "video"]
     call_ids = [seg_id for source, seg_id, _ in ranked if source == "call"]
+    note_ids = [seg_id for source, seg_id, _ in ranked if source == "note"]
     video_by_id = {s.id: s for s in get_segments_by_ids(video_ids)}
     call_by_id = {s.id: s for s in get_call_segments_by_ids(call_ids)}
+    note_by_id = {s.id: s for s in get_note_segments_by_ids(note_ids)}
 
     results: list[dict] = []
     for source, seg_id, _distance in ranked:
@@ -82,5 +88,11 @@ async def search_segments_semantic(query: str, top_k: int = 5) -> list[dict]:
             results.append({
                 "source": "call", "id": seg.id, "text": seg.text,
                 "call_session_id": seg.call_session_id,
+            })
+        elif source == "note" and seg_id in note_by_id:
+            seg = note_by_id[seg_id]
+            results.append({
+                "source": "note", "id": seg.id, "text": seg.text,
+                "note_id": seg.note_id,
             })
     return results

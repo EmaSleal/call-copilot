@@ -57,6 +57,7 @@ _SCOPE_MAP: dict[str, Scope] = {
     "MCP_ALLOW_APPROVALS": Scope.MCP_RESTART,
     "MCP_ALLOW_VIDEO_PROCESSING": Scope.MCP_RESTART,
     "MCP_ALLOW_TOOL_INGESTION": Scope.MCP_RESTART,
+    "MCP_ALLOW_NOTE_INGESTION": Scope.MCP_RESTART,
 }
 
 
@@ -142,6 +143,12 @@ def mcp_allow_tool_ingestion() -> bool:
     """Whether the MCP server's save_tool write tool is enabled. Off by
     default — same parsing as src/mcp/server.py's own gate."""
     return os.getenv("MCP_ALLOW_TOOL_INGESTION", "false").lower() == "true"
+
+
+def mcp_allow_note_ingestion() -> bool:
+    """Whether the MCP server's save_note write tool is enabled. Off by
+    default — same parsing as src/mcp/server.py's own gate."""
+    return os.getenv("MCP_ALLOW_NOTE_INGESTION", "false").lower() == "true"
 
 
 def scope_of(key: str) -> Scope:

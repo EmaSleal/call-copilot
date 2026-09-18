@@ -269,6 +269,35 @@ async def semantic_search(query: str, top_k: int = 5) -> list[dict]:
     return await search_segments_semantic(query, top_k=top_k)
 
 
+async def save_note(
+    title: str,
+    segments: list[str],
+    source_url: str = "",
+) -> dict:
+    """The server's fourth write surface — off by default, only registered
+    when `MCP_ALLOW_NOTE_INGESTION=true`. Persists knowledge the calling
+    agent already gathered and chunked with its own LLM —
+    `src.processing.note_ingestion.save_note` never calls an LLM and never
+    splits text itself, it's pure storage + semantic indexing. Repeat calls
+    with the same (normalized) title APPEND to the existing note rather than
+    creating a duplicate. Returns `{"ok": False, "error": ...}` for an empty
+    title or empty segments instead of letting the `ValueError` cross the
+    MCP boundary as a raw protocol-level failure."""
+    from src.processing.note_ingestion import save_note as _save_note
+
+    def _sync() -> dict:
+        try:
+            note, added, created = _save_note(title, segments, source_url=source_url)
+            return {
+                "ok": True, "created": created, "note_id": note.id,
+                "title": note.title, "segments_added": added,
+            }
+        except ValueError as e:
+            return {"ok": False, "error": str(e)}
+
+    return await asyncio.to_thread(_sync)
+
+
 async def save_tool(
     name: str,
     category: str = "",

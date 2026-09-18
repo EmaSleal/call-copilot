@@ -42,7 +42,7 @@ def build_server():
         description=(
             "Read-only access to call-copilot's stored data: session "
             "history, categories, tools catalog, and content search over "
-            "video/call transcripts."
+            "video/call transcripts and saved notes."
         ),
     )
 
@@ -194,6 +194,25 @@ def build_server():
                 "indexing. Never overwrites an existing tool's enrichment "
                 "on a name collision (returns created=false instead). "
                 "Returns {'ok': False, 'error': ...} for an empty name."
+            ),
+        )
+    # The server's fourth write surface — separate flag: this persists
+    # knowledge the CALLING AGENT already gathered and chunked with its own
+    # LLM (call-copilot never calls an LLM or splits text for this). Repeat
+    # calls with the same normalized title append to the existing note
+    # instead of duplicating it. Off by default; set
+    # MCP_ALLOW_NOTE_INGESTION=true to opt in.
+    if os.getenv("MCP_ALLOW_NOTE_INGESTION", "false").lower() == "true":
+        server.add_tool(
+            tools.save_note,
+            name="save_note",
+            description=(
+                "Persist a titled note whose `segments` the calling agent "
+                "already split by subtopic — this never calls an LLM or "
+                "chunks text itself, only storage + semantic indexing. "
+                "Calling again with the same title appends new segments to "
+                "that note (created=false). Returns {'ok': False, 'error': "
+                "...} for an empty title or empty segments."
             ),
         )
     return server
