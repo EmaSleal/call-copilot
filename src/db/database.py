@@ -6,14 +6,17 @@ recreation, seed data and audit logging — a single cohesive responsibility.
 Per-table dataclasses and CRUD DAOs live in their own modules under
 `src/db/` (categories.py, video_sessions.py, segments.py, call_sessions.py,
 call_segments.py, tools.py, tool_mentions.py, pending_actions.py,
-unified.py) and are re-exported below so `from src.db.database import X`
-keeps working for every symbol previously defined here.
+unified.py, note_sessions.py, note_segments.py) and are re-exported below
+so `from src.db.database import X` keeps working for every symbol
+previously defined here.
 
 Schema:
-  categories    → taxonomía editable desde la TUI
-  sessions      → una sesión de video procesada
-  segments      → fragmentos de transcripción con categoría asignada
-  call_sessions → sesiones del copiloto de llamadas
+  categories     → taxonomía editable desde la TUI
+  sessions       → una sesión de video procesada
+  segments       → fragmentos de transcripción con categoría asignada
+  call_sessions  → sesiones del copiloto de llamadas
+  notes          → notas ingeridas vía MCP (4to write surface)
+  note_segments  → fragmentos de una nota, uno por subtema
 """
 
 import sqlite3
@@ -105,6 +108,25 @@ def init_db() -> None:
             created_at  TEXT NOT NULL
         );
 
+        CREATE TABLE IF NOT EXISTS notes (
+            id               INTEGER PRIMARY KEY AUTOINCREMENT,
+            title            TEXT NOT NULL,
+            normalized_title TEXT NOT NULL,
+            source_url       TEXT NOT NULL DEFAULT '',
+            created_at       TEXT NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_notes_normalized_title
+            ON notes(normalized_title);
+
+        CREATE TABLE IF NOT EXISTS note_segments (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            note_id     INTEGER NOT NULL REFERENCES notes(id),
+            sort_order  INTEGER NOT NULL,
+            text        TEXT NOT NULL,
+            category_id INTEGER REFERENCES categories(id)
+        );
+
         CREATE TABLE IF NOT EXISTS pending_actions (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
             actor       TEXT NOT NULL,
@@ -145,6 +167,7 @@ def _migrate(conn: sqlite3.Connection) -> None:
     for table in (
         "categories", "video_sessions", "segments",
         "call_sessions", "call_segments", "tools", "tool_mentions",
+        "notes", "note_segments",
     ):
         cols = {r[1] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()}
         if "deleted_at" not in cols:
@@ -302,4 +325,22 @@ from src.db.unified import (
     UnifiedSession,
     get_unified_segments,
     get_unified_sessions,
+)
+from src.db.note_sessions import (
+    NoteSession,
+    normalize_note_title,
+    create_note_session,
+    find_note_session_by_title,
+    get_note_sessions,
+    delete_note_session,
+)
+from src.db.note_segments import (
+    NoteSegment,
+    save_note_segment,
+    get_note_segments,
+    get_note_segments_by_category_global,
+    update_note_segment_category,
+    get_note_segments_by_ids,
+    delete_note_segment,
+    next_sort_order,
 )
