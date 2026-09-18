@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.12.0](https://github.com/EmaSleal/call-copilot/compare/v0.11.2...v0.12.0) (2026-09-18)
+
+
+### Features
+
+* **db:** add notes/note_segments storage foundation ([2f90104](https://github.com/EmaSleal/call-copilot/commit/2f90104df65176531bdbf8f51d7039720dfdc832))
+* **db:** add notes/note_segments storage foundation ([d7e970d](https://github.com/EmaSleal/call-copilot/commit/d7e970da5ec4f6af65b21fadf6f04c0c3933d53d))
+* **db:** integrate notes into unified views and fix source-dispatch gaps ([6ae4ee4](https://github.com/EmaSleal/call-copilot/commit/6ae4ee4eef98e3ee11cdf9a7a03ed48701535b16))
+* **db:** integrate notes into unified views and fix source-dispatch gaps ([08e8d72](https://github.com/EmaSleal/call-copilot/commit/08e8d72d578f636d3bdb6c2eab175006a32cbf9a))
+* **mcp:** add save_note write surface with retrieval parity ([6cedaec](https://github.com/EmaSleal/call-copilot/commit/6cedaec2ac88f4c91bd7ca74220bc07a259d745a))
+* **mcp:** add save_note write surface with retrieval parity ([22d7374](https://github.com/EmaSleal/call-copilot/commit/22d73748edbde34414f6db57de1f8b62cacc433b))
+
+
+### Bug Fixes
+
+* **tests:** warm src.db.database before note_sessions submodule import ([1f1333c](https://github.com/EmaSleal/call-copilot/commit/1f1333cd3614fa70193f0596a9a5a5afddbf5a88))
+
 ## [0.11.2](https://github.com/EmaSleal/call-copilot/compare/v0.11.1...v0.11.2) (2026-09-04)
 
 
