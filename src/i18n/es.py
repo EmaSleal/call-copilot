@@ -185,6 +185,7 @@ ES_STRINGS: dict[str, str] = {
     "historial.column_category": "Categoría",
     "historial.source_video": "Video",
     "historial.source_call": "Llamada",
+    "historial.source_note": "Nota",
     "historial.no_sessions": "No hay sesiones procesadas todavía.",
     "historial.no_fragments": "Esta sesión no tiene fragmentos procesados.",
 

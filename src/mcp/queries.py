@@ -80,8 +80,11 @@ def _technology_clause(technology: str, source: Optional[str]) -> tuple[str, lis
     """Build the OR-ed technology sub-clause per source.
 
     - source == "call": curated tool_mentions match only.
-    - source == "video": text LIKE fallback only (no tool_mentions data for
-      video — an intentional, documented accuracy gap, not a bug).
+    - any non-call source (currently "video" and "note"): text LIKE
+      fallback only. The code gates on `source != "call"`, not on
+      "video" — tool_mentions rows only ever reference call sessions, so
+      every other source falls through to LIKE. An intentional,
+      documented accuracy gap, not a bug.
     - source is None (unscoped): a segment matches if it satisfies EITHER
       branch, evaluated against its own source.
 
@@ -93,7 +96,7 @@ def _technology_clause(technology: str, source: Optional[str]) -> tuple[str, lis
     branches: list[str] = []
     params: list = []
 
-    if source != "video":
+    if source != "video" and source != "note":
         call_session_ids = _resolve_technology_call_session_ids(technology)
         if call_session_ids:
             placeholders = ",".join("?" for _ in call_session_ids)
@@ -101,7 +104,7 @@ def _technology_clause(technology: str, source: Optional[str]) -> tuple[str, lis
             params.extend(call_session_ids)
 
     if source != "call":
-        branches.append("(us.source = 'video' AND us.text LIKE ?)")
+        branches.append("(us.source != 'call' AND us.text LIKE ?)")
         params.append(f"%{technology}%")
 
     if not branches:
