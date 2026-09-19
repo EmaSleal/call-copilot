@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.13.0](https://github.com/EmaSleal/call-copilot/compare/v0.12.0...v0.13.0) (2026-09-19)
+
+
+### Features
+
+* **tui:** expose MCP_ALLOW_NOTE_INGESTION in Settings ([718fadc](https://github.com/EmaSleal/call-copilot/commit/718fadcaa3fa2c356a27e8abd3639c7f004c8c7b))
+* **tui:** expose MCP_ALLOW_NOTE_INGESTION in Settings ([07ca819](https://github.com/EmaSleal/call-copilot/commit/07ca819c63a94323bd66ad24610b7f3d55f63ffa))
+
 ## [0.12.0](https://github.com/EmaSleal/call-copilot/compare/v0.11.2...v0.12.0) (2026-09-18)
 
 
