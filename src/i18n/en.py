@@ -34,6 +34,7 @@ EN_STRINGS: dict[str, str] = {
     "settings.mcp_approvals_label": "MCP — allow approve/reject deletes:",
     "settings.mcp_video_processing_label": "MCP — allow video processing:",
     "settings.mcp_tool_ingestion_label": "MCP — allow saving tools (e.g. from Hermes):",
+    "settings.mcp_note_ingestion_label": "MCP — allow saving notes (e.g. from Claude Desktop):",
     "settings.sync_feedback": "Synced. {imported} new, {skipped} already existed.",
     "settings.close_binding": "Close",
 
