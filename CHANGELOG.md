@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.14.0](https://github.com/EmaSleal/call-copilot/compare/v0.13.0...v0.14.0) (2026-09-19)
+
+
+### Features
+
+* **processing:** default new note segments to the Otro category ([fabfe2a](https://github.com/EmaSleal/call-copilot/commit/fabfe2a2ef99f3f405630ca82611972a18b9aa56))
+* **processing:** default new note segments to the Otro category ([55bd611](https://github.com/EmaSleal/call-copilot/commit/55bd61102a5d86f9c0eda3fa097c055147b3a925))
+
 ## [0.13.0](https://github.com/EmaSleal/call-copilot/compare/v0.12.0...v0.13.0) (2026-09-19)
 
 
