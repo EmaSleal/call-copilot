@@ -34,6 +34,7 @@ ES_STRINGS: dict[str, str] = {
     "settings.mcp_approvals_label": "MCP — permitir aprobar/rechazar deletes:",
     "settings.mcp_video_processing_label": "MCP — permitir procesar video:",
     "settings.mcp_tool_ingestion_label": "MCP — permitir guardar tools (ej. desde Hermes):",
+    "settings.mcp_note_ingestion_label": "MCP — permitir guardar notas (ej. desde Claude Desktop):",
     "settings.sync_feedback": "Sincronizado. {imported} nuevas, {skipped} ya existían.",
     "settings.close_binding": "Cerrar",
 
