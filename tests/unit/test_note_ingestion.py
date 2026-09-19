@@ -75,6 +75,23 @@ class TestSaveNoteCreate:
 
         assert not hasattr(note_ingestion, "call_llm_backend")
 
+    def test_new_segments_default_to_the_otro_category(
+        self, patched_db, no_openai_key, mock_segments_store
+    ):
+        """save_note never classifies (no LLM), so leaving category_id NULL
+        would force manual one-by-one reclassification for every note.
+        Defaulting to 'Otro' — the same fallback bucket video/call segments
+        land in — keeps notes visible in category-scoped views immediately,
+        with reclassify_otros() free to move them later."""
+        from src.processing.note_ingestion import save_note
+
+        note, _added, _created = save_note("Otro Default Test", ["a segment"])
+
+        categories = patched_db.get_categories()
+        otro = next(c for c in categories if c.name.lower() == "otro")
+        stored = patched_db.get_note_segments(note.id)
+        assert stored[0].category_id == otro.id
+
 
 class TestSaveNoteDedupAppend:
     def test_repeat_call_with_normalized_title_appends(self, patched_db, no_openai_key, mock_segments_store):

@@ -18,9 +18,11 @@ from src.db.database import (
     NoteSession,
     create_note_session,
     find_note_session_by_title,
+    get_categories,
     next_sort_order,
     save_note_segment,
 )
+from src.processing.category_reclassify import find_otro_category
 from src.rag.segments_store import SegmentsSearchStore
 
 
@@ -56,11 +58,22 @@ def save_note(
     created = existing is None
     note = existing or create_note_session(title, source_url=source_url)
 
+    # save_note never classifies (no LLM) — defaulting new segments to
+    # 'Otro' keeps them visible in category-scoped views immediately
+    # instead of sitting NULL until someone reclassifies each one by hand.
+    # None (not "" ) if 'Otro' was renamed/deleted, matching every other
+    # optional category_id in this codebase.
+    otro = find_otro_category(get_categories())
+    category_id = otro.id if otro else None
+
     start = next_sort_order(note.id)
     indexed: list[tuple[int, str]] = []
     for offset, text in enumerate(texts):
         seg_id = save_note_segment(
-            NoteSegment(id=None, note_id=note.id, sort_order=start + offset, text=text)
+            NoteSegment(
+                id=None, note_id=note.id, sort_order=start + offset,
+                text=text, category_id=category_id,
+            )
         )
         indexed.append((seg_id, text))
 
