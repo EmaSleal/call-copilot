@@ -36,6 +36,29 @@ def build_server():
     running the stdio transport."""
     from mcp.server import MCPServer
 
+    note_ingestion_enabled = (
+        os.getenv("MCP_ALLOW_NOTE_INGESTION", "false").lower() == "true"
+    )
+
+    # `instructions` lands in InitializeResult and gets folded into the
+    # calling model's system prompt by MCP clients that honor it (same
+    # mechanism Engram's server uses for its "proactive save" nudge) — this
+    # is prompt guidance, not server-side detection: the server never sees
+    # the conversation, it can only ask the model to call the tool on its
+    # own. Only set when save_note is actually registered below, so the
+    # instruction never references a tool the client can't see.
+    instructions = (
+        "PROACTIVE NOTE-SAVING RULE: when this conversation reaches a "
+        "conclusion, decision, or technical finding worth keeping, call "
+        "`save_note` immediately — do not wait to be asked. Split the "
+        "content into `segments` by subtopic and use a descriptive title; "
+        "repeat titles append rather than duplicate. Err on the side of "
+        "saving over losing knowledge that would otherwise not survive "
+        "past this conversation."
+        if note_ingestion_enabled
+        else None
+    )
+
     server = MCPServer(
         name="call-copilot",
         title="call-copilot (read-only)",
@@ -44,6 +67,7 @@ def build_server():
             "history, categories, tools catalog, and content search over "
             "video/call transcripts and saved notes."
         ),
+        instructions=instructions,
     )
 
     server.add_tool(
@@ -202,7 +226,7 @@ def build_server():
     # calls with the same normalized title append to the existing note
     # instead of duplicating it. Off by default; set
     # MCP_ALLOW_NOTE_INGESTION=true to opt in.
-    if os.getenv("MCP_ALLOW_NOTE_INGESTION", "false").lower() == "true":
+    if note_ingestion_enabled:
         server.add_tool(
             tools.save_note,
             name="save_note",
