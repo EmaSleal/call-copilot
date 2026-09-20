@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.15.0](https://github.com/EmaSleal/call-copilot/compare/v0.14.0...v0.15.0) (2026-09-20)
+
+
+### Features
+
+* **mcp:** nudge save_note calls proactively via server instructions ([afb5466](https://github.com/EmaSleal/call-copilot/commit/afb5466451885a3e244420d42b4f96b918d67174))
+* **mcp:** nudge save_note calls proactively via server instructions ([9236d62](https://github.com/EmaSleal/call-copilot/commit/9236d625c670b2f33db599c84578f81816e7cc67))
+
 ## [0.14.0](https://github.com/EmaSleal/call-copilot/compare/v0.13.0...v0.14.0) (2026-09-19)
 
 
