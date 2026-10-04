@@ -27,7 +27,6 @@ from src.core.config_defaults import (
     silence_threshold_ms,
     scope_of,
     tech_scout_db_path,
-    mcp_allow_approvals,
     mcp_allow_tool_ingestion,
     mcp_allow_video_processing,
 )
@@ -170,7 +169,7 @@ class TestScopeOf:
 
     @pytest.mark.parametrize(
         "key",
-        ["MCP_ALLOW_APPROVALS", "MCP_ALLOW_VIDEO_PROCESSING", "MCP_ALLOW_TOOL_INGESTION"],
+        ["MCP_ALLOW_VIDEO_PROCESSING", "MCP_ALLOW_TOOL_INGESTION"],
     )
     def test_mcp_write_flags_map_to_mcp_restart_scope(self, key):
         # A distinct scope from RESTART: restarting the TUI does nothing
@@ -206,22 +205,6 @@ class TestTechScoutDbPath:
     def test_honors_explicit_value(self, monkeypatch):
         monkeypatch.setenv("TECH_SCOUT_DB_PATH", "/custom/path/tools.db")
         assert tech_scout_db_path() == "/custom/path/tools.db"
-
-
-class TestMcpAllowApprovals:
-    def test_defaults_to_false_when_unset(self, monkeypatch):
-        monkeypatch.delenv("MCP_ALLOW_APPROVALS", raising=False)
-        assert mcp_allow_approvals() is False
-
-    def test_true_case_insensitive(self, monkeypatch):
-        monkeypatch.setenv("MCP_ALLOW_APPROVALS", "True")
-        assert mcp_allow_approvals() is True
-
-    def test_any_other_value_is_false(self, monkeypatch):
-        # Same strict parsing as src/mcp/server.py's own gate — only the
-        # literal "true" (case-insensitive) enables it.
-        monkeypatch.setenv("MCP_ALLOW_APPROVALS", "1")
-        assert mcp_allow_approvals() is False
 
 
 class TestMcpAllowVideoProcessing:

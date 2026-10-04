@@ -31,7 +31,6 @@ EN_STRINGS: dict[str, str] = {
     "settings.scope_next_call": "applies on the next call",
     "settings.scope_next_video": "applies on the next video",
     "settings.scope_mcp_restart": "requires restarting your MCP client (e.g. Claude Desktop)",
-    "settings.mcp_approvals_label": "MCP — allow approve/reject deletes:",
     "settings.mcp_video_processing_label": "MCP — allow video processing:",
     "settings.mcp_tool_ingestion_label": "MCP — allow saving tools (e.g. from Hermes):",
     "settings.sync_feedback": "Synced. {imported} new, {skipped} already existed.",
@@ -43,7 +42,6 @@ EN_STRINGS: dict[str, str] = {
     "app.search_binding": "Search",
     "app.categories_binding": "Categories",
     "app.historial_binding": "History",
-    "app.pending_binding": "Approvals",
     "app.settings_binding": "Settings",
 
     # call.py — CallCopilotTab
@@ -157,19 +155,6 @@ EN_STRINGS: dict[str, str] = {
     "tools.add_success": "“{name}” added to the catalog.",
     "tools.add_dedup_hit": "“{name}” already exists in the catalog — left unchanged.",
 
-    # pending_actions.py — PendingActionsTab
-    "pending_actions.tab_title": "⏳ Approvals",
-    "pending_actions.description_label": "Actions proposed by the agent, awaiting approval:",
-    "pending_actions.column_id": "ID",
-    "pending_actions.column_action": "Action",
-    "pending_actions.column_target": "Target",
-    "pending_actions.column_reason": "Reason",
-    "pending_actions.column_date": "Date",
-    "pending_actions.approve_button": "Approve",
-    "pending_actions.reject_button": "Reject",
-    "pending_actions.approve_error": "Could not approve: {error}",
-    "pending_actions.approved_feedback": "Approved and executed.",
-    "pending_actions.rejected_feedback": "Rejected.",
 
     # historial.py — HistorialTab
     "historial.tab_title": "📋 History",

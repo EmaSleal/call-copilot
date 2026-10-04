@@ -26,7 +26,7 @@ concretas — la elección de provider concreto vive en `src/tui/bootstrap.py`
  
 ### La TUI (`src/tui/app.py`) — uso normal
  
-Siete tabs, todas sobre la misma base de datos:
+Seis tabs, todas sobre la misma base de datos:
  
 | Tab | Qué hace |
 |---|---|
@@ -35,8 +35,7 @@ Siete tabs, todas sobre la misma base de datos:
 | **[3] Buscar** | Full-text search sobre los segmentos ya clasificados. |
 | **[4] Categorías** | CRUD de la taxonomía compartida entre video y llamadas — un nivel de subcategorías (`└─`), color por categoría. |
 | **[5] Historial** | Sesiones de video y de llamada unificadas (vista `unified_sessions`/`unified_segments` en SQLite), con columna de origen. |
-| **[6] Tools** | Catálogo de tecnologías/herramientas mencionadas en las llamadas, extraídas automáticamente post-sesión (`src/processing/tool_extractor.py`). Lista todo por default; búsqueda semántica (RAG) si hay `OPENAI_API_KEY` configurada. |
-| **[7] Aprobaciones** | Deletes propuestos por el agente de mantenimiento del catálogo (`src/agent/maintenance.py`), a la espera de aprobación humana — el agente escribe solo, pero nunca borra sin que vos lo confirmes acá. |
+| **[6] Tools** | Catálogo de tecnologías/herramientas mencionadas en las llamadas, extraídas automáticamente post-sesión (`src/processing/tool_extractor.py`) o importadas desde tech-scout. Búsqueda por substring de nombre. |
  
 `Ctrl+S` abre el panel de **Configuración** (modal) desde cualquier tab:
 idioma de la interfaz (Español/English, cambia en caliente sin reiniciar),
@@ -84,17 +83,9 @@ compartida).
   override de modelo opcional. Gestionables desde la TUI sin editar código.
 - **RAG opcional** (`src/rag/chroma_store.py`) — ChromaDB + embeddings de
   OpenAI para dar contexto de sesiones pasadas al LLM durante la llamada.
-- **Agente de mantenimiento del catálogo, con propuesta en vez de escritura
-  directa** (`src/agent/`) — un agente con tool-calling de OpenAI
-  (`src/agent/commands.py`, `catalog_commands.py`) revisa el catálogo de
-  Tools/Categorías tras cada sesión y puede proponer *deletes* (duplicados,
-  entradas obsoletas). El agente nunca borra directo: cada propuesta queda
-  encolada en `pending_actions` y espera aprobación humana en la tab
-  Aprobaciones (`src/agent/maintenance.py`). Decisión deliberada — un
-  catálogo que se alimenta de extracción automática por LLM necesita un
-  mecanismo de limpieza igual de automático, pero borrar sin supervisión
-  humana es un riesgo que no vale la pena tomar en datos que no se
-  regeneran solos.
+  Categorías (`src/rag/categories_store.py`) usa el mismo mecanismo para
+  detectar duplicados al sugerir categorías nuevas desde Video/Historial,
+  con fallback a un juez LLM cuando no hay `OPENAI_API_KEY`.
 - **Idioma de la UI en caliente, sin reiniciar** (`src/i18n/`) — cambiar
   Español/English desde Configuración reescribe en el momento los textos de
   todas las pantallas montadas (`App.retranslate_all()`), sin recomponer
@@ -178,18 +169,18 @@ python main.py
  
 SQLite en `data/app.db` corriendo desde el repo, o `~/.call-copilot/data/app.db`
 si instalaste vía pipx/`install.sh` (`src/core/paths.py` resuelve cuál según
-si hay un checkout de git al lado del código corriendo). Nueve tablas —
+si hay un checkout de git al lado del código corriendo). Ocho tablas —
 `categories`, `video_sessions`, `segments`, `call_sessions`,
-`call_segments`, `tools`, `tool_mentions`, `pending_actions`, `audit_log` —
+`call_segments`, `tools`, `tool_mentions`, `audit_log` —
 más dos vistas de solo lectura (`unified_segments`, `unified_sessions`) que
 unifican video y llamadas para el tab Historial. `categories` es la única
 taxonomía realmente compartida entre video y llamadas; `video_sessions` y
 `call_sessions` son secuencias de id independientes. `tools`/`tool_mentions`
 alimentan el tab Tools — un tool mencionado en varias llamadas es una sola
 fila en `tools` con una `tool_mention` por cada mención (nunca se pisa el
-enriquecimiento del LLM). `pending_actions`/`audit_log` respaldan el tab
-Aprobaciones — cada delete que el agente de mantenimiento propone queda
-encolado ahí hasta que un humano lo aprueba o rechaza.
+enriquecimiento del LLM). `audit_log` registra cada delete humano sobre
+categorías/tools/sesiones (actor, acción, fila) — no hay cola de
+aprobación: un delete manual se ejecuta directo.
  
 ## Servidor MCP
  
@@ -248,21 +239,13 @@ las mismas variables de entorno que lee la TUI (mismo `.env`, vía
 `load_dotenv()`) — típicamente ninguna es estrictamente obligatoria salvo
 `OPENAI_API_KEY` si querés `semantic_search` funcionando.
  
-`approve_pending_action` / `reject_pending_action` — única superficie de
-escritura del servidor, **apagada por default**. Resuelven un pending
-delete que el propio loop de mantención del catálogo (agente interno,
-`src/agent/commands.py`) ya encoló para aprobación humana; nunca originan
-un delete nuevo. Se activan con `MCP_ALLOW_APPROVALS=true` en el entorno
-del proceso `call-copilot-mcp` — sin esa variable, ni siquiera aparecen en
-`list_tools`, así que un cliente no puede ni descubrirlas. Importante: un
-cliente MCP (Claude Desktop incluido) **no hereda el entorno del shell**
-al lanzar el proceso — la variable tiene que ir en el `env` de la config
-del cliente, no alcanza con exportarla en la terminal.
- 
-`start_video_processing` / `get_video_processing_status` — segunda
-superficie de escritura, **apagada por default**, flag independiente:
-`MCP_ALLOW_VIDEO_PROCESSING=true`. A diferencia de `approve_pending_action`,
-esto origina trabajo nuevo (descarga + transcripción, minutos) a partir de
+`start_video_processing` / `get_video_processing_status` — superficie de
+escritura del servidor, **apagada por default**, flag:
+`MCP_ALLOW_VIDEO_PROCESSING=true`. Importante: un cliente MCP (Claude
+Desktop incluido) **no hereda el entorno del shell** al lanzar el proceso
+— la variable tiene que ir en el `env` de la config del cliente, no
+alcanza con exportarla en la terminal. Esto origina trabajo nuevo
+(descarga + transcripción, minutos) a partir de
 una URL arbitraria — patrón fire-and-forget + poll, nunca bloquea la
 llamada hasta terminar. Solo un video a la vez: `start_video_processing`
 devuelve `{"ok": false, "error": ...}` si ya hay uno procesándose (claim

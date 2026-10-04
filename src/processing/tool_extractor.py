@@ -3,65 +3,31 @@ Tools Catalog extraction for Call Copilot.
 
 Identifies concrete named tools/products/libraries/platforms mentioned in a
 call transcript, deduplicates them against the persistent tools catalog,
-records a per-call mention, and (best-effort) embeds them into the semantic
-store for later `search_tools()` lookups.
+and records a per-call mention (consumed later by
+src/processing/live_tool_context.py's live in-call trigger).
 
 Supported LLM backends: ollama (default) | gpt | claude
   — mirrors the same backend-switch pattern as src/processing/session_processor.py.
 """
 
-import asyncio
-import concurrent.futures
 import json
 import logging
 import os
 import sqlite3
 from pathlib import Path
-from typing import Coroutine, TypeVar
-
-from openai import AsyncOpenAI
 
 from src.db.database import (
     Tool,
     ToolMention,
     create_tool,
     find_tool_by_name,
-    get_tools_by_ids,
+    get_tools,
     normalize_tool_name,
     save_tool_mention,
 )
 from src.llm.backend import call_llm_backend
-from src.rag.tools_store import ToolsCatalogStore
 
 logger = logging.getLogger("call_copilot.processing.tool_extractor")
-
-_T = TypeVar("_T")
-
-
-def _run_coro_sync(coro: Coroutine[object, object, _T]) -> _T:
-    """
-    Run `coro` to completion from synchronous code, whether or not the
-    caller is already inside a running event loop.
-
-    ingest_tools()/import_from_tech_scout() both call this to embed tools
-    (async ToolsCatalogStore.add_tool) from a sync function. Plain
-    asyncio.run() works when called from a normal sync context (e.g.
-    ingest_tools() from session_processor), but raises "asyncio.run()
-    cannot be called from a running event loop" when the caller is
-    already inside one — which is exactly what happens when
-    import_from_tech_scout() runs from SettingsScreen's synchronous
-    on_button_pressed handler, itself running inside Textual's own
-    asyncio loop. When a loop is already running, spin up a fresh one on
-    a separate thread instead of trying to nest loops, and block until
-    it's done — matches this function's existing fully-synchronous
-    contract.
-    """
-    try:
-        asyncio.get_running_loop()
-    except RuntimeError:
-        return asyncio.run(coro)
-    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-        return pool.submit(asyncio.run, coro).result()
 
 _TOOLS_SYSTEM = (
     "You are a technical analyst. Identify concrete tools mentioned in the transcript.\n"
@@ -114,38 +80,13 @@ def _parse_tools_response(raw: str) -> list[dict]:
         return []
 
 
-def _embedding_text(tool: Tool) -> str:
-    """Build the text embedded into the semantic store for a tool."""
-    parts = [tool.name]
-    for field in (tool.category, tool.description, tool.summary, tool.tags):
-        if field:
-            parts.append(field)
-    return ". ".join(parts)
-
-
-def _build_openai_client() -> AsyncOpenAI | None:
-    """Build an AsyncOpenAI client, or None when OPENAI_API_KEY is not configured."""
-    api_key = os.getenv("OPENAI_API_KEY")
-    return AsyncOpenAI(api_key=api_key) if api_key else None
-
-
-async def _embed_tools(tools: list[Tool]) -> None:
-    """Embed each touched tool into the semantic store. Best-effort — the store
-    itself no-ops without an OpenAI client."""
-    openai_client = _build_openai_client()
-    store = ToolsCatalogStore(openai_client=openai_client)
-    for tool in tools:
-        await store.add_tool(tool.id, _embedding_text(tool))
-
-
 def ingest_tools(call_session_id: int, spoken_text: str) -> int:
     """
-    Extract concrete tools mentioned in spoken_text, dedup/persist them, record a
-    mention for this call, and (best-effort) embed them into the semantic store.
+    Extract concrete tools mentioned in spoken_text, dedup/persist them, and
+    record a mention for this call.
 
-    Extraction and SQLite persistence run regardless of LLM_BACKEND and regardless
-    of OPENAI_API_KEY availability; only the Chroma embedding write is skipped
-    without a configured OpenAI client.
+    Runs regardless of LLM_BACKEND and regardless of OPENAI_API_KEY
+    availability.
 
     Returns the number of tools touched (created or re-mentioned).
     """
@@ -186,9 +127,6 @@ def ingest_tools(call_session_id: int, spoken_text: str) -> int:
             )
         )
         touched_tools.append(tool)
-
-    if touched_tools:
-        _run_coro_sync(_embed_tools(touched_tools))
 
     return len(touched_tools)
 
@@ -248,9 +186,6 @@ def import_from_tech_scout(db_path: str) -> tuple[int, int]:
             continue
         imported.append(create_tool(tool))
 
-    if imported:
-        _run_coro_sync(_embed_tools(imported))
-
     return len(imported), skipped
 
 
@@ -266,8 +201,8 @@ def save_researched_tool(
     """
     Persist a tool record that's already been researched/structured upstream
     (e.g. by whichever LLM/agent an external caller like Hermes has
-    configured) — this function only owns storage + semantic indexing, it
-    never fetches a URL or calls an LLM itself. Same dedup policy as
+    configured) — this function only owns storage, it never fetches a URL
+    or calls an LLM itself. Same dedup policy as
     ingest_tools()/import_from_tech_scout(): never overwrites an existing
     tool's enrichment on a name collision.
 
@@ -296,32 +231,12 @@ def save_researched_tool(
             tags=json.dumps(tags or []),
         )
     )
-    _run_coro_sync(_embed_tools([tool]))
     return tool, True
 
 
-async def search_tools(query: str, top_k: int = 5) -> list[Tool]:
-    """Semantic search over the tools catalog, joined back to full SQLite rows."""
-    openai_client = _build_openai_client()
-    store = ToolsCatalogStore(openai_client=openai_client)
-    ranked = await store.search(query, top_k=top_k)
-    ids = [tool_id for tool_id, _ in ranked]
-    return get_tools_by_ids(ids)
-
-
-async def answer_tools_query(query: str, top_k: int = 5) -> str:
-    """Human-readable summary of the top matching tools for a query."""
-    tools = await search_tools(query, top_k=top_k)
-    if not tools:
-        return "No matching tools found."
-
-    lines = []
-    for tool in tools:
-        line = f"- {tool.name}"
-        if tool.category:
-            line += f" ({tool.category})"
-        detail = tool.summary or tool.description
-        if detail:
-            line += f": {detail}"
-        lines.append(line)
-    return "\n".join(lines)
+async def search_tools(query: str) -> list[Tool]:
+    """Case-insensitive substring search over the tools catalog by name."""
+    needle = query.strip().lower()
+    if not needle:
+        return []
+    return [t for t in get_tools() if needle in t.name.lower()]

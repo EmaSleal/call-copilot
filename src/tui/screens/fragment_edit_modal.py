@@ -20,8 +20,7 @@ def _update_fragment_category(source: str, fragment_id: int, category_id: int) -
     collide, so the source tag from the fragment's composite row key
     decides which table to write to. An `else` fallback here would silently
     write a video id into call_segments and corrupt an unrelated call
-    fragment; unknown sources fail closed instead (same pattern as
-    src/agent/catalog_commands.py::_reassign_segment_category)."""
+    fragment; unknown sources fail closed instead."""
     if source == "video":
         db.update_segment_category(fragment_id, category_id)
     elif source == "call":

@@ -75,16 +75,6 @@ def build_server():
         ),
     )
     server.add_tool(
-        tools.search_tools_catalog,
-        name="search_tools_catalog",
-        description=(
-            "Semantic (embedding-based) search over the Tools catalog — "
-            "distinct from list_tools_catalog's literal substring filter. "
-            "Best-effort: MAY return an empty list without OPENAI_API_KEY "
-            "or chromadb; use list_tools_catalog for guaranteed results."
-        ),
-    )
-    server.add_tool(
         tools.get_session,
         name="get_session",
         description=(
@@ -123,35 +113,10 @@ def build_server():
             "use search_content for guaranteed full-text results."
         ),
     )
-    # The server's one write surface — off by default. Approving/rejecting
-    # only resolves a delete a human/agent already queued via
-    # src/agent/commands.py (categories/tools catalog); it can never
-    # originate a new delete. Set MCP_ALLOW_APPROVALS=true to opt in.
-    if os.getenv("MCP_ALLOW_APPROVALS", "false").lower() == "true":
-        server.add_tool(
-            tools.approve_pending_action,
-            name="approve_pending_action",
-            description=(
-                "Approve an agent-proposed pending delete (queued by "
-                "call-copilot's own catalog-maintenance loop) and run it. "
-                "Returns {'ok': False, 'error': ...} for an unknown or "
-                "already-resolved pending_id instead of raising."
-            ),
-        )
-        server.add_tool(
-            tools.reject_pending_action,
-            name="reject_pending_action",
-            description=(
-                "Reject an agent-proposed pending delete without running "
-                "it. Returns {'ok': False, 'error': ...} for an unknown or "
-                "already-resolved pending_id instead of raising."
-            ),
-        )
-    # The server's second write surface — separate flag, separate risk
-    # profile from MCP_ALLOW_APPROVALS: this originates NEW heavy work
-    # (network download + CPU/GPU transcription, minutes) from an
-    # arbitrary URL, rather than resolving a delete an internal agent
-    # already vetted. Concurrency=1 is enforced atomically in
+    # The server's first write surface — separate flag, off by default:
+    # this originates NEW heavy work (network download + CPU/GPU
+    # transcription, minutes) from an arbitrary URL. Concurrency=1 is
+    # enforced atomically in
     # src/db/video_sessions.py::try_start_processing_session (validated
     # against real concurrent OS processes — see
     # docs/next-steps/feature-proposals.md point 5 Hallazgo 3). Off by
@@ -178,7 +143,7 @@ def build_server():
                 "{'ok': False, 'error': ...} for an unknown session_id."
             ),
         )
-    # The server's third write surface — separate flag: this persists a
+    # The server's second write surface — separate flag: this persists a
     # tool record the CALLING AGENT already researched/structured with its
     # own LLM (call-copilot never fetches a URL or calls an LLM for this).
     # Never overwrites an existing tool's enrichment on a name collision.
@@ -190,10 +155,10 @@ def build_server():
             description=(
                 "Persist a tool record already researched/structured by "
                 "the calling agent's own LLM — this never fetches a URL "
-                "or calls an LLM itself, only storage + semantic "
-                "indexing. Never overwrites an existing tool's enrichment "
-                "on a name collision (returns created=false instead). "
-                "Returns {'ok': False, 'error': ...} for an empty name."
+                "or calls an LLM itself, storage only. Never overwrites "
+                "an existing tool's enrichment on a name collision "
+                "(returns created=false instead). Returns {'ok': False, "
+                "'error': ...} for an empty name."
             ),
         )
     return server

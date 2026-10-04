@@ -1,6 +1,6 @@
 """
 Shared boilerplate for the Chroma-backed embedding stores in this package
-(RAGStore, ToolsCatalogStore, SegmentsSearchStore, CategoriesStore). Each one
+(RAGStore, SegmentsSearchStore, CategoriesStore). Each one
 owns a different collection, id scheme, and search return shape — only the
 chromadb connection setup and the OpenAI embedding call were duplicated
 across all four.

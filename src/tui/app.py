@@ -9,7 +9,6 @@ Tabs:
   [4] Categorías     — CRUD de taxonomía
   [5] Historial      — navegar sesiones de llamada pasadas e ideas extraídas
   [6] Tools          — catálogo de tecnologías detectadas en las llamadas
-  [7] Aprobaciones   — aprobar/rechazar deletes propuestos por el agente
 
 Este módulo es solo el shell de la app (UnifiedApp) y el entrypoint. Cada
 tab/screen vive en su propio módulo bajo tabs/ y screens/ — ver ahí por la
@@ -34,7 +33,6 @@ from src.tui.screens.settings import SettingsScreen
 from src.tui.tabs.call import CallCopilotTab
 from src.tui.tabs.categories import CategoriesTab
 from src.tui.tabs.historial import HistorialTab
-from src.tui.tabs.pending_actions import PendingActionsTab
 from src.tui.tabs.search import SearchTab
 from src.tui.tabs.tools import ToolsTab
 from src.tui.tabs.video import VideoTab
@@ -102,7 +100,6 @@ class UnifiedApp(App):
         Binding("4", "switch_tab('tab-categories')", t("app.categories_binding")),
         Binding("5", "switch_tab('tab-historial')", t("app.historial_binding")),
         Binding("6", "switch_tab('tab-tools')", "Tools"),
-        Binding("7", "switch_tab('tab-pending')", t("app.pending_binding")),
         Binding("ctrl+s", "open_settings", t("app.settings_binding")),
     ]
 
@@ -118,7 +115,6 @@ class UnifiedApp(App):
             yield CategoriesTab()
             yield HistorialTab()
             yield ToolsTab()
-            yield PendingActionsTab()
         yield Footer()
 
     def action_switch_tab(self, tab_id: str) -> None:

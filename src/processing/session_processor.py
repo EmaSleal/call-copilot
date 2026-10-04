@@ -22,7 +22,6 @@ import os
 import re
 from typing import Optional
 
-from src.agent.maintenance import run as run_catalog_maintenance
 from src.db.database import CallSegment, get_categories, save_call_segment
 from src.llm.backend import call_llm_backend
 from src.processing.search_indexer import index_segment
@@ -271,13 +270,5 @@ def process(call_session_id: int, transcript_path: str) -> int:
             index_segment("call", seg_id, text)
 
     _run_best_effort("search indexing", call_session_id, _index_persisted_segments)
-
-    # Step 11: catalog-maintenance agent — best-effort, must never affect
-    # idea persistence. OpenAI-gated like Tools Catalog/search indexing;
-    # skips silently without OPENAI_API_KEY.
-    _run_best_effort(
-        "catalog maintenance", call_session_id,
-        lambda: run_catalog_maintenance(call_session_id),
-    )
 
     return saved

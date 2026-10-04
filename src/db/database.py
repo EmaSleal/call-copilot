@@ -5,9 +5,9 @@ This module owns connection lifecycle, schema DDL, migrations, view
 recreation, seed data and audit logging — a single cohesive responsibility.
 Per-table dataclasses and CRUD DAOs live in their own modules under
 `src/db/` (categories.py, video_sessions.py, segments.py, call_sessions.py,
-call_segments.py, tools.py, tool_mentions.py, pending_actions.py,
-unified.py) and are re-exported below so `from src.db.database import X`
-keeps working for every symbol previously defined here.
+call_segments.py, tools.py, tool_mentions.py, unified.py) and are
+re-exported below so `from src.db.database import X` keeps working for
+every symbol previously defined here.
 
 Schema:
   categories     → taxonomía editable desde la TUI
@@ -105,18 +105,6 @@ def init_db() -> None:
             created_at  TEXT NOT NULL
         );
 
-        CREATE TABLE IF NOT EXISTS pending_actions (
-            id          INTEGER PRIMARY KEY AUTOINCREMENT,
-            actor       TEXT NOT NULL,
-            action      TEXT NOT NULL,
-            table_name  TEXT NOT NULL,
-            row_id      INTEGER NOT NULL,
-            reason      TEXT NOT NULL DEFAULT '',
-            status      TEXT NOT NULL DEFAULT 'pending',
-            created_at  TEXT NOT NULL,
-            resolved_at TEXT,
-            resolved_by TEXT
-        );
         """)
         _seed_categories(conn)
         _migrate(conn)
@@ -290,12 +278,6 @@ from src.db.tool_mentions import (
     save_tool_mention,
     get_tool_mentions,
     delete_tool_mention,
-)
-from src.db.pending_actions import (
-    PendingAction,
-    create_pending_action,
-    get_pending_actions,
-    resolve_pending_action,
 )
 from src.db.unified import (
     UnifiedSegment,

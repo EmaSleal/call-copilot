@@ -32,8 +32,8 @@ def format_add_tool_feedback(created: bool, name: str) -> str:
 class ToolsTab(TabPane):
     """
     Browse and search the tools catalog populated by post-call extraction
-    (src/processing/tool_extractor.py). Search box on top (semantic, via
-    search_tools()), full catalog listed by default and on refresh.
+    (src/processing/tool_extractor.py). Search box on top (name substring,
+    via search_tools()), full catalog listed by default and on refresh.
     """
 
     def __init__(self):

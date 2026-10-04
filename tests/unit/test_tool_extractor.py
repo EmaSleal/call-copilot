@@ -8,9 +8,7 @@ Covers spec scenarios (sdd/tools-catalog, PR2 slice):
   Phase 6 — extraction LLM backend dispatch + JSON parsing (no chunk fallback)
   Phase 7 — ingest_tools() persistence: new tool, existing tool (dedup + remention),
             empty extraction result
-  Phase 8 — embedding wiring: asyncio.run bridge to ToolsCatalogStore.add_tool,
-            backend independence (persistence works without OPENAI_API_KEY)
-  Phase 9 — search_tools() / answer_tools_query()
+  Phase 9 — search_tools() name-substring search
 """
 
 import json
@@ -37,11 +35,6 @@ def patched_db(tmp_path, monkeypatch):
 @pytest.fixture
 def no_openai_key(monkeypatch):
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-
-
-@pytest.fixture
-def with_openai_key(monkeypatch):
-    monkeypatch.setenv("OPENAI_API_KEY", "sk-test-fake-key")
 
 
 # ─────────────────────────────────────────────────────────────
@@ -228,142 +221,29 @@ class TestIngestToolsEmptyResult:
 
 
 # ─────────────────────────────────────────────────────────────
-# Phase 8 — embedding wiring & backend independence
-# ─────────────────────────────────────────────────────────────
-
-class TestIngestToolsEmbeddingWiring:
-    def test_add_tool_called_via_asyncio_run_when_client_present(
-        self, patched_db, with_openai_key
-    ):
-        from src.processing import tool_extractor
-
-        raw = json.dumps({
-            "tools": [{"name": "Chroma", "category": "Vector DB", "description": "",
-                       "summary": "", "tags": "", "context_snippet": ""}]
-        })
-
-        mock_store = MagicMock()
-        mock_store.add_tool = AsyncMock(return_value=True)
-        mock_store_cls = MagicMock(return_value=mock_store)
-
-        with patch.object(tool_extractor, "_call_tools_llm", return_value=raw):
-            with patch.object(tool_extractor, "ToolsCatalogStore", mock_store_cls):
-                touched = tool_extractor.ingest_tools(call_session_id=1, spoken_text="text")
-
-        assert touched == 1
-        mock_store.add_tool.assert_awaited_once()
-        args, _ = mock_store.add_tool.call_args
-        tools = patched_db.get_tools()
-        assert args[0] == tools[0].id
-
-    def test_ollama_backend_without_openai_key_still_persists(
-        self, patched_db, no_openai_key, monkeypatch
-    ):
-        """LLM_BACKEND=ollama + no OPENAI_API_KEY: tools/tool_mentions still persist,
-        only the embedding step is skipped."""
-        from src.processing import tool_extractor
-
-        monkeypatch.setenv("LLM_BACKEND", "ollama")
-        raw = json.dumps({
-            "tools": [{"name": "Deepgram", "category": "STT", "description": "",
-                       "summary": "", "tags": "", "context_snippet": ""}]
-        })
-
-        with patch.object(tool_extractor, "_call_tools_llm", return_value=raw):
-            touched = tool_extractor.ingest_tools(call_session_id=1, spoken_text="text")
-
-        assert touched == 1
-        tools = patched_db.get_tools()
-        assert len(tools) == 1
-        assert tools[0].name == "Deepgram"
-
-
-class TestBuildOpenaiClient:
-    def test_no_key_returns_none(self, no_openai_key):
-        from src.processing import tool_extractor
-
-        assert tool_extractor._build_openai_client() is None
-
-    def test_with_key_returns_client(self, with_openai_key):
-        from src.processing import tool_extractor
-
-        client = tool_extractor._build_openai_client()
-        assert client is not None
-
-
-# ─────────────────────────────────────────────────────────────
-# Phase 9 — search_tools() / answer_tools_query()
+# Phase 9 — search_tools() name-substring search
 # ─────────────────────────────────────────────────────────────
 
 class TestSearchTools:
     @pytest.mark.asyncio
-    async def test_search_tools_ranks_via_store_and_joins_sqlite_rows(
-        self, patched_db, with_openai_key
-    ):
+    async def test_matches_case_insensitive_name_substring(self, patched_db, no_openai_key):
         from src.db.database import Tool
         from src.processing import tool_extractor
 
-        t1 = patched_db.create_tool(Tool(id=None, name="Chroma", normalized_name="chroma",
-                                          description="Vector search engine"))
-        t2 = patched_db.create_tool(Tool(id=None, name="Deepgram", normalized_name="deepgram"))
+        t1 = patched_db.create_tool(Tool(id=None, name="Chroma", normalized_name="chroma"))
+        patched_db.create_tool(Tool(id=None, name="Deepgram", normalized_name="deepgram"))
 
-        mock_store = MagicMock()
-        mock_store.search = AsyncMock(return_value=[(t1.id, 0.1), (t2.id, 0.5)])
-        mock_store_cls = MagicMock(return_value=mock_store)
+        results = await tool_extractor.search_tools("chr")
 
-        with patch.object(tool_extractor, "ToolsCatalogStore", mock_store_cls):
-            results = await tool_extractor.search_tools("vector database")
-
-        assert [r.id for r in results] == [t1.id, t2.id]
-        assert results[0].name == "Chroma"
+        assert [r.id for r in results] == [t1.id]
 
     @pytest.mark.asyncio
-    async def test_search_tools_empty_store_result_returns_empty_list(
-        self, patched_db, with_openai_key
-    ):
+    async def test_no_match_returns_empty_list(self, patched_db, no_openai_key):
         from src.processing import tool_extractor
 
-        mock_store = MagicMock()
-        mock_store.search = AsyncMock(return_value=[])
-        mock_store_cls = MagicMock(return_value=mock_store)
-
-        with patch.object(tool_extractor, "ToolsCatalogStore", mock_store_cls):
-            results = await tool_extractor.search_tools("nothing matches")
+        results = await tool_extractor.search_tools("nothing matches")
 
         assert results == []
-
-
-class TestAnswerToolsQuery:
-    @pytest.mark.asyncio
-    async def test_answer_tools_query_returns_readable_summary(self, patched_db, with_openai_key):
-        from src.db.database import Tool
-        from src.processing import tool_extractor
-
-        t1 = patched_db.create_tool(Tool(id=None, name="Chroma", normalized_name="chroma",
-                                          category="Vector DB", summary="Used for RAG"))
-
-        mock_store = MagicMock()
-        mock_store.search = AsyncMock(return_value=[(t1.id, 0.1)])
-        mock_store_cls = MagicMock(return_value=mock_store)
-
-        with patch.object(tool_extractor, "ToolsCatalogStore", mock_store_cls):
-            answer = await tool_extractor.answer_tools_query("vector database")
-
-        assert "Chroma" in answer
-
-    @pytest.mark.asyncio
-    async def test_answer_tools_query_no_matches_returns_message(self, patched_db, with_openai_key):
-        from src.processing import tool_extractor
-
-        mock_store = MagicMock()
-        mock_store.search = AsyncMock(return_value=[])
-        mock_store_cls = MagicMock(return_value=mock_store)
-
-        with patch.object(tool_extractor, "ToolsCatalogStore", mock_store_cls):
-            answer = await tool_extractor.answer_tools_query("nothing matches")
-
-        assert answer
-        assert "Chroma" not in answer
 
 
 # ─────────────────────────────────────────────────────────────
@@ -449,18 +329,6 @@ class TestImportFromTechScout:
         with pytest.raises(FileNotFoundError):
             tool_extractor.import_from_tech_scout(str(patched_db.DB_PATH.parent / "nope.db"))
 
-    def test_embeds_imported_tools_when_openai_key_present(self, patched_db, tech_scout_db, with_openai_key):
-        from src.processing import tool_extractor
-
-        mock_store = MagicMock()
-        mock_store.add_tool = AsyncMock(return_value=True)
-        mock_store_cls = MagicMock(return_value=mock_store)
-
-        with patch.object(tool_extractor, "ToolsCatalogStore", mock_store_cls):
-            tool_extractor.import_from_tech_scout(str(tech_scout_db))
-
-        assert mock_store.add_tool.await_count == 2
-
 
 # ─────────────────────────────────────────────────────────────
 # save_researched_tool() — pure storage for a record already researched/
@@ -526,35 +394,3 @@ class TestSaveResearchedTool:
 
         with pytest.raises(ValueError):
             tool_extractor.save_researched_tool("   ")
-
-    def test_embeds_new_tool_when_openai_key_present(self, patched_db, with_openai_key):
-        from src.processing import tool_extractor
-
-        mock_store = MagicMock()
-        mock_store.add_tool = AsyncMock(return_value=True)
-        mock_store_cls = MagicMock(return_value=mock_store)
-
-        with patch.object(tool_extractor, "ToolsCatalogStore", mock_store_cls):
-            tool, created = tool_extractor.save_researched_tool("Chroma")
-
-        assert created is True
-        mock_store.add_tool.assert_awaited_once()
-        args, _ = mock_store.add_tool.call_args
-        assert args[0] == tool.id
-
-    def test_dedup_hit_does_not_call_embed(self, patched_db, with_openai_key):
-        from src.db.database import Tool
-        from src.processing import tool_extractor
-
-        patched_db.create_tool(
-            Tool(id=None, name="Chroma", normalized_name="chroma")
-        )
-
-        mock_store = MagicMock()
-        mock_store.add_tool = AsyncMock(return_value=True)
-        mock_store_cls = MagicMock(return_value=mock_store)
-
-        with patch.object(tool_extractor, "ToolsCatalogStore", mock_store_cls):
-            tool_extractor.save_researched_tool("Chroma")
-
-        mock_store.add_tool.assert_not_awaited()

@@ -199,12 +199,6 @@ class SettingsScreen(ModalScreen):
                     id="settings-silence-threshold",
                     value=str(config_defaults.silence_threshold_ms()),
                 )
-                yield Label(t("settings.mcp_approvals_label"), id="lbl-settings-mcp-approvals")
-                yield Select(
-                    [("false", "false"), ("true", "true")],
-                    id="settings-mcp-approvals",
-                    value="true" if config_defaults.mcp_allow_approvals() else "false",
-                )
                 yield Label(
                     t("settings.mcp_video_processing_label"),
                     id="lbl-settings-mcp-video-processing",
@@ -262,9 +256,6 @@ class SettingsScreen(ModalScreen):
             t("settings.tech_scout_path_label")
         )
         self.query_one("#btn-settings-sync-tools", Button).label = t("settings.sync_tech_scout_button")
-        self.query_one("#lbl-settings-mcp-approvals", Label).update(
-            t("settings.mcp_approvals_label")
-        )
         self.query_one("#lbl-settings-mcp-video-processing", Label).update(
             t("settings.mcp_video_processing_label")
         )
@@ -284,7 +275,6 @@ class SettingsScreen(ModalScreen):
             "WHISPER_MODEL_CALL": config_defaults.whisper_model_call(),
             "WHISPER_MODEL_VIDEO": config_defaults.whisper_model_video(),
             "SILENCE_THRESHOLD_MS": str(config_defaults.silence_threshold_ms()),
-            "MCP_ALLOW_APPROVALS": "true" if config_defaults.mcp_allow_approvals() else "false",
             "MCP_ALLOW_VIDEO_PROCESSING": (
                 "true" if config_defaults.mcp_allow_video_processing() else "false"
             ),
@@ -318,9 +308,6 @@ class SettingsScreen(ModalScreen):
             "SILENCE_THRESHOLD_MS": self.query_one(
                 "#settings-silence-threshold", Input
             ).value,
-            "MCP_ALLOW_APPROVALS": str(
-                self.query_one("#settings-mcp-approvals", Select).value
-            ),
             "MCP_ALLOW_VIDEO_PROCESSING": str(
                 self.query_one("#settings-mcp-video-processing", Select).value
             ),

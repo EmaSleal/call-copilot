@@ -116,40 +116,6 @@ class TestListToolsCatalogTool:
         assert {r["name"] for r in results} == {"Redis", "PostgreSQL"}
 
 
-class TestSearchToolsCatalogTool:
-    def test_wraps_semantic_search_and_returns_dicts(self, patched_db):
-        from src.db.database import Tool
-        from src.mcp import tools
-        from src.processing import tool_extractor
-
-        t1 = patched_db.create_tool(
-            Tool(id=None, name="Chroma", normalized_name="chroma", description="Vector DB")
-        )
-
-        mock_store = MagicMock()
-        mock_store.search = AsyncMock(return_value=[(t1.id, 0.1)])
-        mock_store_cls = MagicMock(return_value=mock_store)
-
-        with patch.object(tool_extractor, "ToolsCatalogStore", mock_store_cls):
-            results = asyncio.run(tools.search_tools_catalog("vector database"))
-
-        assert all(isinstance(r, dict) for r in results)
-        assert results[0]["name"] == "Chroma"
-
-    def test_empty_store_result_returns_empty_list(self, patched_db):
-        from src.mcp import tools
-        from src.processing import tool_extractor
-
-        mock_store = MagicMock()
-        mock_store.search = AsyncMock(return_value=[])
-        mock_store_cls = MagicMock(return_value=mock_store)
-
-        with patch.object(tool_extractor, "ToolsCatalogStore", mock_store_cls):
-            results = asyncio.run(tools.search_tools_catalog("nothing matches"))
-
-        assert results == []
-
-
 class TestSemanticSearchTool:
     def test_semantic_search_empty_without_openai_key(self, monkeypatch):
         """Spec: Graceful RAG degradation — missing OPENAI_API_KEY scenario.
@@ -173,72 +139,6 @@ class TestSemanticSearchTool:
 
         assert result == []
         mock_store_cls.assert_called_once_with(openai_client=None)
-
-
-class TestApprovePendingActionTool:
-    def test_approves_and_executes_the_queued_handler(self, patched_db, monkeypatch):
-        from src.agent import commands as agent_commands
-        from src.mcp import tools
-
-        monkeypatch.setattr(agent_commands, "_REGISTRY", {})
-        calls = []
-        agent_commands.register(agent_commands.Command(
-            name="delete_thing", kind="delete", description="d",
-            parameters={"type": "object", "properties": {"row_id": {"type": "integer"}}, "required": ["row_id"]},
-            handler=lambda row_id: calls.append(row_id),
-            table_name="things",
-        ))
-        agent_commands.execute("delete_thing", {"row_id": 7})
-        pending_id = patched_db.get_pending_actions()[0].id
-
-        result = asyncio.run(tools.approve_pending_action(pending_id))
-
-        assert result == {"ok": True}
-        assert calls == [7]
-        approved = {p.id: p for p in patched_db.get_pending_actions(status="approved")}
-        assert approved[pending_id].resolved_by == "mcp-client"
-
-    def test_unknown_pending_id_returns_ok_false_instead_of_raising(self, patched_db):
-        from src.mcp import tools
-
-        result = asyncio.run(tools.approve_pending_action(999999))
-
-        assert result == {"ok": False, "error": "no pending action with id 999999"}
-
-
-class TestRejectPendingActionTool:
-    def test_rejects_without_executing_the_handler(self, patched_db, monkeypatch):
-        from src.agent import commands as agent_commands
-        from src.mcp import tools
-
-        monkeypatch.setattr(agent_commands, "_REGISTRY", {})
-        calls = []
-        agent_commands.register(agent_commands.Command(
-            name="delete_thing", kind="delete", description="d",
-            parameters={"type": "object", "properties": {"row_id": {"type": "integer"}}, "required": ["row_id"]},
-            handler=lambda row_id: calls.append(row_id),
-            table_name="things",
-        ))
-        agent_commands.execute("delete_thing", {"row_id": 7})
-        pending_id = patched_db.get_pending_actions()[0].id
-
-        result = asyncio.run(tools.reject_pending_action(pending_id))
-
-        assert result == {"ok": True}
-        assert calls == []
-        rejected = {p.id: p for p in patched_db.get_pending_actions(status="rejected")}
-        assert rejected[pending_id].resolved_by == "mcp-client"
-
-    def test_unknown_pending_id_returns_ok_false_instead_of_silently_no_op(self, patched_db):
-        """db.resolve_pending_action() silently no-ops on an unknown id (an
-        UPDATE matching zero rows) — the tool must not report success for a
-        no-op, since a client would read {"ok": True} as proof something
-        was actually rejected."""
-        from src.mcp import tools
-
-        result = asyncio.run(tools.reject_pending_action(999999))
-
-        assert result == {"ok": False, "error": "no pending action with id 999999"}
 
 
 class TestStartVideoProcessingTool:

@@ -1,10 +1,10 @@
 """
-Semantic search indexing for video and call segments — a third
-Chroma-backed search surface alongside the live in-call RAGStore and the
-Tools Catalog's ToolsCatalogStore. Coexists with (never replaces) the
-existing full-text SQL search (src/db/database.py:search_segments) — this
-is optional, OpenAI-gated, and degrades silently without it, same as the
-rest of this codebase's RAG features.
+Semantic search indexing for video and call segments — a second
+Chroma-backed search surface alongside the live in-call RAGStore.
+Coexists with (never replaces) the existing full-text SQL search
+(src/db/database.py:search_segments) — this is optional, OpenAI-gated,
+and degrades silently without it, same as the rest of this codebase's
+RAG features.
 """
 
 import asyncio

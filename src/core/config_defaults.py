@@ -54,7 +54,6 @@ _SCOPE_MAP: dict[str, Scope] = {
     "WHISPER_MODEL_CALL": Scope.RESTART,
     "WHISPER_MODEL_VIDEO": Scope.NEXT_VIDEO,
     "SILENCE_THRESHOLD_MS": Scope.RESTART,
-    "MCP_ALLOW_APPROVALS": Scope.MCP_RESTART,
     "MCP_ALLOW_VIDEO_PROCESSING": Scope.MCP_RESTART,
     "MCP_ALLOW_TOOL_INGESTION": Scope.MCP_RESTART,
 }
@@ -121,14 +120,6 @@ def silence_threshold_ms() -> int:
 def language() -> str:
     """Idioma activo de la UI ('es' o 'en'). Default: 'en'."""
     return _getenv_or_default("LANGUAGE", DEFAULT_LANGUAGE)
-
-
-def mcp_allow_approvals() -> bool:
-    """Whether the MCP server's approve/reject_pending_action write tools
-    are enabled. Off by default — mirrors src/mcp/server.py's own
-    `os.getenv(key, "false").lower() == "true"` gate exactly, so the TUI's
-    displayed state never disagrees with what the server actually does."""
-    return os.getenv("MCP_ALLOW_APPROVALS", "false").lower() == "true"
 
 
 def mcp_allow_video_processing() -> bool:
