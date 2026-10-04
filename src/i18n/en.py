@@ -34,7 +34,6 @@ EN_STRINGS: dict[str, str] = {
     "settings.mcp_approvals_label": "MCP — allow approve/reject deletes:",
     "settings.mcp_video_processing_label": "MCP — allow video processing:",
     "settings.mcp_tool_ingestion_label": "MCP — allow saving tools (e.g. from Hermes):",
-    "settings.mcp_note_ingestion_label": "MCP — allow saving notes (e.g. from Claude Desktop):",
     "settings.sync_feedback": "Synced. {imported} new, {skipped} already existed.",
     "settings.close_binding": "Close",
 
@@ -186,7 +185,6 @@ EN_STRINGS: dict[str, str] = {
     "historial.column_category": "Category",
     "historial.source_video": "Video",
     "historial.source_call": "Call",
-    "historial.source_note": "Note",
     "historial.no_sessions": "No sessions processed yet.",
     "historial.no_fragments": "This session has no processed fragments yet.",
 
@@ -201,7 +199,6 @@ EN_STRINGS: dict[str, str] = {
     "search.column_fragment": "Fragment",
     "search.source_video": "Video",
     "search.source_call": "Call",
-    "search.source_note": "Note",
     "search.no_results": "No results.",
     "search.no_results_semantic": "No results (is OPENAI_API_KEY configured?).",
 

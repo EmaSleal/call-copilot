@@ -20,14 +20,12 @@ def _titled_sessions(sessions: list) -> list:
 _SOURCE_LABEL_KEYS = {
     "video": "historial.source_video",
     "call": "historial.source_call",
-    "note": "historial.source_note",
 }
 
 
 def _source_label(source: str) -> str:
     """Translated label for a unified-session source. Unknown sources fall
-    back to the raw tag rather than silently claiming to be a call — the
-    binary ternary this replaces mislabeled every note row as "Call".
+    back to the raw tag rather than silently claiming to be a call.
 
     Pure function — no side effects, easy to test without Textual.
     """

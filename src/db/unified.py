@@ -1,4 +1,4 @@
-"""DAOs — Unified Segments (read-only view over segments + call_segments + note_segments)."""
+"""DAOs — Unified Segments (read-only view over segments + call_segments)."""
 
 from dataclasses import dataclass
 from typing import Optional
@@ -8,9 +8,9 @@ from src.db import database
 
 @dataclass
 class UnifiedSegment:
-    """Read-only row from the `unified_segments` view (video + call + note, same categories)."""
+    """Read-only row from the `unified_segments` view (video + call, same categories)."""
     id: int
-    source: str          # "video" | "call" | "note"
+    source: str          # "video" | "call"
     session_id: int
     text: str
     category_id: Optional[int]
@@ -19,9 +19,9 @@ class UnifiedSegment:
 
 @dataclass
 class UnifiedSession:
-    """Read-only row from the `unified_sessions` view (video + call + note)."""
+    """Read-only row from the `unified_sessions` view (video + call)."""
     id: int
-    source: str          # "video" | "call" | "note"
+    source: str          # "video" | "call"
     title: str
     created_at: str
 
@@ -31,10 +31,10 @@ def get_unified_segments(
 ) -> list[UnifiedSegment]:
     """
     Return rows from the unified_segments view, optionally filtered by source
-    ('video'|'call'|'note') and/or session_id. Since video_sessions.id,
-    call_sessions.id and notes.id are independent sequences, filtering by
-    session_id alone without source could mix rows from different sources
-    that share the same id.
+    ('video'|'call') and/or session_id. Since video_sessions.id and
+    call_sessions.id are independent sequences, filtering by session_id
+    alone without source could mix rows from different sources that share
+    the same id.
     """
     clauses = []
     params: list = []

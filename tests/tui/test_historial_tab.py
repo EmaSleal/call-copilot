@@ -303,8 +303,7 @@ class TestTitledSessionsPure:
 
 class TestSourceLabelPure:
     """
-    Pure-function tests for the 3-way source label lookup — replaces the
-    binary ternary that collapsed every note row into the "Call" label.
+    Pure-function tests for the source label lookup.
     """
 
     def test_video_label(self):
@@ -314,12 +313,6 @@ class TestSourceLabelPure:
     def test_call_label(self):
         from src.tui.tabs.historial import _source_label
         assert _source_label("call") == "Call"
-
-    def test_note_label_is_distinct_from_call(self):
-        from src.tui.tabs.historial import _source_label
-        note_label = _source_label("note")
-        assert note_label != _source_label("call")
-        assert note_label == "Note"
 
     def test_unknown_source_falls_back_to_raw_tag(self):
         from src.tui.tabs.historial import _source_label
