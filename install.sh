@@ -96,7 +96,7 @@ fi
 # ── perfil de instalación ────────────────────────────────────────────────
 echo "¿Qué querés instalar?"
 echo "  1) Mínimo   — solo llamadas en vivo (Deepgram + GPT/Claude/Ollama)"
-echo "  2) Completo — todo (Whisper local, video, catálogo de tools con RAG)"
+echo "  2) Completo — todo (Whisper local, catálogo de tools con RAG)"
 echo "  3) Elegir a mano"
 prompt_read "Elegí [1-3] (default: 1): "
 PROFILE_CHOICE="${REPLY:-1}"
@@ -107,19 +107,12 @@ case "$PROFILE_CHOICE" in
         EXTRAS=""
         ;;
     2)
-        EXTRAS="whisper-local,video,rag"
+        EXTRAS="whisper-local,rag"
         ;;
     3)
         prompt_read "¿Whisper local para STT? [y/N]: "
         case "$REPLY" in
             [Yy]*) EXTRAS="whisper-local" ;;
-        esac
-
-        prompt_read "¿Procesar videos de YouTube? [y/N]: "
-        case "$REPLY" in
-            [Yy]*)
-                if [ -n "$EXTRAS" ]; then EXTRAS="$EXTRAS,video"; else EXTRAS="video"; fi
-                ;;
         esac
 
         prompt_read "¿Catálogo de tools con búsqueda semántica (RAG)? [y/N]: "

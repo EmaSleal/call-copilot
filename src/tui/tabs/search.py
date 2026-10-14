@@ -1,5 +1,5 @@
-"""Tab 3: Búsqueda — full-text SQL en segmentos de BD, más búsqueda
-semántica opcional (video + llamadas) cuando hay OPENAI_API_KEY."""
+"""Tab 2: Búsqueda — full-text SQL en segmentos de llamadas, más búsqueda
+semántica opcional cuando hay OPENAI_API_KEY."""
 
 from textual.app import ComposeResult
 from textual.containers import Horizontal
@@ -8,25 +8,6 @@ from textual.widgets import Button, DataTable, Input, Label, TabbedContent, TabP
 import src.db.database as db
 from src.i18n import t
 from src.processing.search_indexer import search_segments_semantic
-
-
-def _fmt_ts(seconds: float) -> str:
-    m = int(seconds // 60)
-    s = int(seconds % 60)
-    return f"{m:02d}:{s:02d}"
-
-
-def _semantic_result_row(result: dict) -> tuple[str, str, str, str]:
-    """Pure function — no side effects, easy to test without Textual."""
-    if result["source"] == "video":
-        origin = t("search.source_video")
-        tiempo = _fmt_ts(result.get("start_s", 0.0))
-    else:
-        origin = t("search.source_call")
-        tiempo = "—"
-    text = result["text"]
-    text = text[:80] + ("…" if len(text) > 80 else "")
-    return (origin, tiempo, "—", text)
 
 
 class SearchTab(TabPane):
@@ -82,15 +63,14 @@ class SearchTab(TabPane):
     def _run_search(self, query: str) -> None:
         table = self.query_one("#search-results", DataTable)
         table.clear()
-        results = db.search_segments(query)
+        results = db.search_call_segments(query)
         status = self.query_one("#search-status", Label)
         status.update("" if results else f"[dim]{t('search.no_results')}[/dim]")
         for r in results:
-            start = _fmt_ts(r["start_s"])
             cat = r.get("cat_name") or "—"
             text = r["text"][:80] + ("…" if len(r["text"]) > 80 else "")
             title = (r.get("session_title") or "")[:30]
-            table.add_row(title, start, cat, text)
+            table.add_row(title, "—", cat, text)
 
     async def _run_semantic_search(self, query: str) -> None:
         table = self.query_one("#search-results", DataTable)
@@ -102,4 +82,5 @@ class SearchTab(TabPane):
             return
         status.update("")
         for r in results:
-            table.add_row(*_semantic_result_row(r))
+            text = r["text"][:80] + ("…" if len(r["text"]) > 80 else "")
+            table.add_row(t("search.source_call"), "—", "—", text)

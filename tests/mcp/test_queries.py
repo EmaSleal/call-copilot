@@ -4,8 +4,9 @@ backing the read-only MCP server's `search_content` tool contract.
 
 Spec scenarios covered (sdd/mcp-server-read-only/spec):
 - Category filter scoping (parent includes children / subcategory exact)
-- Category + technology combined (call source)
-- Technology match via text fallback (video)
+- Category + technology combined
+- Technology matches only via curated tool_mentions, never a plain text
+  match on the segment itself
 - Unknown technology returns empty, not an error
 - No filters provided still returns a bounded (LIMIT-capped) result
 """
@@ -165,25 +166,10 @@ class TestSearchContentTechnologyFilter:
         assert results[0]["matched_text"] == "usamos Redis para cache"
         assert results[0]["session_id"] == matching_cs.id
 
-    def test_technology_matched_via_text_fallback_for_video(self, patched_db):
-        from src.db.database import Segment
-        from src.mcp.queries import search_content
-
-        video_session = patched_db.create_video_session(title="Video 1", url="http://x")
-        patched_db.save_segment(
-            Segment(id=None, session_id=video_session.id, start_s=0.0, end_s=1.0,
-                    text="...usamos Redis para...")
-        )
-
-        results = search_content(technology="Redis", source="video")
-
-        assert len(results) == 1
-        assert results[0]["source"] == "video"
-        assert "Redis" in results[0]["matched_text"]
-
-    def test_technology_text_fallback_not_used_for_call_source_tool_mentions_only(self, patched_db):
+    def test_technology_requires_curated_tool_mention_not_just_text(self, patched_db):
         """A call segment whose text merely mentions the word must NOT match
-        unless there's a curated tool_mention — the text fallback is video-only."""
+        unless there's a curated tool_mention — technology is never a plain
+        text match on the segment itself."""
         from src.db.database import CallSegment
         from src.mcp.queries import search_content
 
@@ -192,21 +178,17 @@ class TestSearchContentTechnologyFilter:
             CallSegment(id=None, call_session_id=cs.id, sort_order=0, text="hablamos de Redis")
         )
 
-        results = search_content(technology="Redis", source="call")
+        results = search_content(technology="Redis")
 
         assert results == []
 
     def test_unknown_technology_returns_empty_not_error(self, patched_db):
-        from src.db.database import CallSegment, Segment
+        from src.db.database import CallSegment
         from src.mcp.queries import search_content
 
         cs = patched_db.create_call_session(context="ctx", transcript_path="whisper-text/x.txt", title="Call 1")
         patched_db.save_call_segment(
             CallSegment(id=None, call_session_id=cs.id, sort_order=0, text="usamos Postgres")
-        )
-        video_session = patched_db.create_video_session(title="Video 1", url="http://x")
-        patched_db.save_segment(
-            Segment(id=None, session_id=video_session.id, start_s=0.0, end_s=1.0, text="hablamos de Kafka")
         )
 
         results = search_content(technology="Cobol")

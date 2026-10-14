@@ -1,4 +1,4 @@
-"""Tab 6: Tools — catálogo de tecnologías detectadas en las llamadas."""
+"""Tab 5: Tools — catálogo de tecnologías detectadas en las llamadas."""
 
 from textual.app import ComposeResult
 from textual.containers import Horizontal
@@ -58,8 +58,8 @@ class ToolsTab(TabPane):
     def retranslate(self) -> None:
         """Re-apply t() to static chrome and rebuild the DataTable's
         columns (clear+re-add is the only way to relabel them, then
-        repopulate — mirrors video.py's retranslate()). Doesn't touch the
-        typed search query or the status line (result state)."""
+        repopulate). Doesn't touch the typed search query or the status
+        line (result state)."""
         query_input = self.query_one("#tools-query", Input)
         if not query_input.value:
             query_input.placeholder = t("tools.search_placeholder")

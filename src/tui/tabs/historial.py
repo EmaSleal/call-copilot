@@ -1,4 +1,4 @@
-"""Tab 5: Historial — browse past call/video sessions and their fragments."""
+"""Tab 4: Historial — browse past call sessions and their fragments."""
 
 from textual.app import ComposeResult
 from textual.widgets import Button, DataTable, Label, TabbedContent, TabPane
@@ -18,7 +18,6 @@ def _titled_sessions(sessions: list) -> list:
 
 
 _SOURCE_LABEL_KEYS = {
-    "video": "historial.source_video",
     "call": "historial.source_call",
 }
 
@@ -34,11 +33,12 @@ def _source_label(source: str) -> str:
 
 
 def _parse_session_row_key(key: str) -> tuple[str, int]:
-    """Split a Historial session row key ("video:3" / "call:12") into (source, id).
+    """Split a Historial session row key ("call:12") into (source, id).
 
-    Pure function — no side effects, easy to test without Textual. A composite
-    key is required because video_sessions.id and call_sessions.id are
-    independent sequences and can collide.
+    Pure function — no side effects, easy to test without Textual. Kept as
+    a composite key (rather than a bare id) for forward compatibility with
+    a second source, same shape the unified_segments/unified_sessions
+    views already use.
     """
     source, _, session_id = key.partition(":")
     return source, int(session_id)
@@ -46,7 +46,7 @@ def _parse_session_row_key(key: str) -> tuple[str, int]:
 
 class HistorialTab(TabPane):
     """
-    Browse past sessions (video AND call, unified) and their fragments.
+    Browse past call sessions and their fragments.
 
     Layout:
       Top panel  — DataTable listing unified sessions (id, source, title, date).
@@ -74,8 +74,8 @@ class HistorialTab(TabPane):
 
     def retranslate(self) -> None:
         """Re-apply t() to static chrome and rebuild both DataTables'
-        columns (clear+re-add, then repopulate — mirrors video.py's
-        retranslate()). Sessions table repopulates unconditionally; the
+        columns (clear+re-add, then repopulate). Sessions table
+        repopulates unconditionally; the
         ideas table only if a session is currently selected (otherwise it
         stays empty with translated-but-empty headers, matching its normal
         pre-selection state). Doesn't touch the status line (result

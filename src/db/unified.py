@@ -1,4 +1,5 @@
-"""DAOs — Unified Segments (read-only view over segments + call_segments)."""
+"""DAOs — Unified Segments (read-only view over call_segments, keyed by
+source so a second source can be added later without an API change)."""
 
 from dataclasses import dataclass
 from typing import Optional
@@ -8,9 +9,9 @@ from src.db import database
 
 @dataclass
 class UnifiedSegment:
-    """Read-only row from the `unified_segments` view (video + call, same categories)."""
+    """Read-only row from the `unified_segments` view. Only source today is "call"."""
     id: int
-    source: str          # "video" | "call"
+    source: str          # "call"
     session_id: int
     text: str
     category_id: Optional[int]
@@ -19,9 +20,9 @@ class UnifiedSegment:
 
 @dataclass
 class UnifiedSession:
-    """Read-only row from the `unified_sessions` view (video + call)."""
+    """Read-only row from the `unified_sessions` view. Only source today is "call"."""
     id: int
-    source: str          # "video" | "call"
+    source: str          # "call"
     title: str
     created_at: str
 
@@ -30,11 +31,8 @@ def get_unified_segments(
     source: Optional[str] = None, session_id: Optional[int] = None
 ) -> list[UnifiedSegment]:
     """
-    Return rows from the unified_segments view, optionally filtered by source
-    ('video'|'call') and/or session_id. Since video_sessions.id and
-    call_sessions.id are independent sequences, filtering by session_id
-    alone without source could mix rows from different sources that share
-    the same id.
+    Return rows from the unified_segments view, optionally filtered by
+    source ('call') and/or session_id.
     """
     clauses = []
     params: list = []

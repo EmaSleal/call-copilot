@@ -1,6 +1,6 @@
 """
 Unit tests for src.core.paths — resolves the base directory for all
-persistent app state (DB, .env, chroma, whisper-text, video downloads).
+persistent app state (DB, .env, chroma, whisper-text).
 
 Dev checkouts (git repo present next to the running code) resolve to the
 repo root as an ABSOLUTE path — not the process's current working

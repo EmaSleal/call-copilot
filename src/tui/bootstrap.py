@@ -53,7 +53,7 @@ def _build_llm():
         )
     # "gpt" is now the canonical realtime default (config_defaults.DEFAULT_LLM_BACKEND);
     # "claude" only applies when explicitly configured. "ollama" is not supported
-    # for the copilot LLM (Ollama is used in the video classifier, not real-time streaming).
+    # for the copilot LLM (Ollama is used by the batch classifier, not real-time streaming).
     from src.llm.claude_provider import ClaudeProvider
 
     return ClaudeProvider(api_key=os.getenv("ANTHROPIC_API_KEY"))

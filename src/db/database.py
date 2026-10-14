@@ -1,19 +1,18 @@
 """
-Capa de acceso a datos. SQLite compartida entre call-copilot y video transcriber.
+Capa de acceso a datos. SQLite de call-copilot.
 
 This module owns connection lifecycle, schema DDL, migrations, view
 recreation, seed data and audit logging — a single cohesive responsibility.
 Per-table dataclasses and CRUD DAOs live in their own modules under
-`src/db/` (categories.py, video_sessions.py, segments.py, call_sessions.py,
-call_segments.py, tools.py, tool_mentions.py, unified.py) and are
-re-exported below so `from src.db.database import X` keeps working for
-every symbol previously defined here.
+`src/db/` (categories.py, call_sessions.py, call_segments.py, tools.py,
+tool_mentions.py, unified.py) and are re-exported below so `from
+src.db.database import X` keeps working for every symbol previously
+defined here.
 
 Schema:
   categories     → taxonomía editable desde la TUI
-  sessions       → una sesión de video procesada
-  segments       → fragmentos de transcripción con categoría asignada
   call_sessions  → sesiones del copiloto de llamadas
+  call_segments  → fragmentos de transcripción con categoría asignada
 """
 
 import sqlite3
@@ -38,26 +37,6 @@ def init_db() -> None:
             name        TEXT NOT NULL UNIQUE,
             description TEXT NOT NULL DEFAULT '',
             color       TEXT NOT NULL DEFAULT '#6366f1'
-        );
-
-        CREATE TABLE IF NOT EXISTS video_sessions (
-            id          INTEGER PRIMARY KEY AUTOINCREMENT,
-            title       TEXT NOT NULL,
-            url         TEXT NOT NULL,
-            status      TEXT NOT NULL DEFAULT 'pending',
-            created_at  TEXT NOT NULL,
-            html_report TEXT,
-            error_msg   TEXT
-        );
-
-        CREATE TABLE IF NOT EXISTS segments (
-            id             INTEGER PRIMARY KEY AUTOINCREMENT,
-            session_id     INTEGER NOT NULL REFERENCES video_sessions(id),
-            start_s        REAL NOT NULL,
-            end_s          REAL NOT NULL,
-            text           TEXT NOT NULL,
-            category_id    INTEGER REFERENCES categories(id),
-            keyframe_path  TEXT
         );
 
         CREATE TABLE IF NOT EXISTS call_sessions (
@@ -131,8 +110,7 @@ def _migrate(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE categories ADD COLUMN parent_id INTEGER REFERENCES categories(id)")
 
     for table in (
-        "categories", "video_sessions", "segments",
-        "call_sessions", "call_segments", "tools", "tool_mentions",
+        "categories", "call_sessions", "call_segments", "tools", "tool_mentions",
     ):
         cols = {r[1] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()}
         if "deleted_at" not in cols:
@@ -148,11 +126,6 @@ def _recreate_views(conn: sqlite3.Connection) -> None:
     conn.execute("DROP VIEW IF EXISTS unified_segments")
     conn.execute("""
         CREATE VIEW unified_segments AS
-            SELECT id, 'video' AS source, session_id, text, category_id,
-                   start_s AS position
-            FROM segments
-            WHERE deleted_at IS NULL
-            UNION ALL
             SELECT id, 'call' AS source, call_session_id AS session_id, text, category_id,
                    CAST(sort_order AS REAL) AS position
             FROM call_segments
@@ -162,9 +135,6 @@ def _recreate_views(conn: sqlite3.Connection) -> None:
     conn.execute("DROP VIEW IF EXISTS unified_sessions")
     conn.execute("""
         CREATE VIEW unified_sessions AS
-            SELECT id, 'video' AS source, title, created_at FROM video_sessions
-            WHERE deleted_at IS NULL
-            UNION ALL
             SELECT id, 'call' AS source, title, created_at FROM call_sessions
             WHERE deleted_at IS NULL
     """)
@@ -231,23 +201,6 @@ from src.db.categories import (
     update_category,
     delete_category,
 )
-from src.db.video_sessions import (
-    VideoSession,
-    create_video_session,
-    delete_video_session,
-    update_session_status,
-    get_video_sessions,
-)
-from src.db.segments import (
-    Segment,
-    save_segment,
-    get_segments,
-    update_segment_category,
-    get_segments_by_category,
-    get_segments_by_category_global,
-    get_segments_by_ids,
-    search_segments,
-)
 from src.db.call_sessions import (
     CallSession,
     create_call_session,
@@ -263,6 +216,7 @@ from src.db.call_segments import (
     update_call_segment_category,
     get_call_segments_by_ids,
     delete_call_segment,
+    search_call_segments,
 )
 from src.db.tools import (
     Tool,

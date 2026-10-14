@@ -296,7 +296,7 @@ class TestTitledSessionsPure:
     def test_works_with_unified_session(self):
         from src.tui.tabs.historial import _titled_sessions
         from src.db.database import UnifiedSession
-        titled = UnifiedSession(id=1, source="video", title="A talk", created_at="2026-01-01")
+        titled = UnifiedSession(id=1, source="call", title="A talk", created_at="2026-01-01")
         untitled = UnifiedSession(id=2, source="call", title="", created_at="2026-01-01")
         assert _titled_sessions([titled, untitled]) == [titled]
 
@@ -305,10 +305,6 @@ class TestSourceLabelPure:
     """
     Pure-function tests for the source label lookup.
     """
-
-    def test_video_label(self):
-        from src.tui.tabs.historial import _source_label
-        assert _source_label("video") == "Video"
 
     def test_call_label(self):
         from src.tui.tabs.historial import _source_label
@@ -322,17 +318,13 @@ class TestSourceLabelPure:
 class TestParseSessionRowKeyPure:
     """
     Pure-function tests for splitting the composite Historial row key
-    ("source:id") back into (source, id) — needed because video_sessions.id
-    and call_sessions.id are independent sequences that can collide.
+    ("source:id") back into (source, id) — kept as a composite key for
+    forward compatibility with a second source.
     """
 
     def test_parses_call_key(self):
         from src.tui.tabs.historial import _parse_session_row_key
         assert _parse_session_row_key("call:12") == ("call", 12)
-
-    def test_parses_video_key(self):
-        from src.tui.tabs.historial import _parse_session_row_key
-        assert _parse_session_row_key("video:3") == ("video", 3)
 
 
 # ─────────────────────────────────────────────────────────────

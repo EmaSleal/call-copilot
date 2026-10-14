@@ -5,11 +5,8 @@
  
 ![Unified Copilot](docs/assets/promo-banner.svg)
  
-TUI (Textual) que corre en paralelo dos flujos: **Call Copilot** (transcripción
-en vivo + sugerencias de un LLM, disparadas por fin de turno o pregunta
-detectada) y **Video Transcriber** (bajar un video de YouTube, transcribirlo,
-clasificarlo por categoría y generar un reporte HTML). Comparten la misma base
-SQLite y la misma pantalla.
+TUI (Textual) para **Call Copilot**: transcripción en vivo de una llamada +
+sugerencias de un LLM, disparadas por fin de turno o pregunta detectada.
  
 ## Arquitectura
  
@@ -26,16 +23,15 @@ concretas — la elección de provider concreto vive en `src/tui/bootstrap.py`
  
 ### La TUI (`src/tui/app.py`) — uso normal
  
-Seis tabs, todas sobre la misma base de datos:
+Cinco tabs, todas sobre la misma base de datos:
  
 | Tab | Qué hace |
 |---|---|
 | **[1] Call Copilot** | Transcripción en vivo de una llamada + sugerencias del LLM en tiempo real. Perfil activo, selector de dispositivo de audio, botón de Configuración. |
-| **[2] Video** | Pega una URL de YouTube, la transcribe, clasifica los segmentos por categoría y genera el reporte HTML. |
-| **[3] Buscar** | Full-text search sobre los segmentos ya clasificados. |
-| **[4] Categorías** | CRUD de la taxonomía compartida entre video y llamadas — un nivel de subcategorías (`└─`), color por categoría. |
-| **[5] Historial** | Sesiones de video y de llamada unificadas (vista `unified_sessions`/`unified_segments` en SQLite), con columna de origen. |
-| **[6] Tools** | Catálogo de tecnologías/herramientas mencionadas en las llamadas, extraídas automáticamente post-sesión (`src/processing/tool_extractor.py`) o importadas desde tech-scout. Búsqueda por substring de nombre. |
+| **[2] Buscar** | Full-text search sobre los segmentos ya clasificados. |
+| **[3] Categorías** | CRUD de la taxonomía de categorías — un nivel de subcategorías (`└─`), color por categoría. |
+| **[4] Historial** | Sesiones de llamada (vista `unified_sessions`/`unified_segments` en SQLite). |
+| **[5] Tools** | Catálogo de tecnologías/herramientas mencionadas en las llamadas, extraídas automáticamente post-sesión (`src/processing/tool_extractor.py`) o importadas desde tech-scout. Búsqueda por substring de nombre. |
  
 `Ctrl+S` abre el panel de **Configuración** (modal) desde cualquier tab:
 idioma de la interfaz (Español/English, cambia en caliente sin reiniciar),
@@ -84,8 +80,8 @@ compartida).
 - **RAG opcional** (`src/rag/chroma_store.py`) — ChromaDB + embeddings de
   OpenAI para dar contexto de sesiones pasadas al LLM durante la llamada.
   Categorías (`src/rag/categories_store.py`) usa el mismo mecanismo para
-  detectar duplicados al sugerir categorías nuevas desde Video/Historial,
-  con fallback a un juez LLM cuando no hay `OPENAI_API_KEY`.
+  detectar duplicados al sugerir categorías nuevas desde Historial, con
+  fallback a un juez LLM cuando no hay `OPENAI_API_KEY`.
 - **Idioma de la UI en caliente, sin reiniciar** (`src/i18n/`) — cambiar
   Español/English desde Configuración reescribe en el momento los textos de
   todas las pantallas montadas (`App.retranslate_all()`), sin recomponer
@@ -116,14 +112,14 @@ datos quedan en `~/.call-copilot/` (Linux/macOS) o `$HOME\.call-copilot\`
 | Perfil | Incluye |
 |---|---|
 | Mínimo (default) | solo llamadas en vivo (Deepgram + GPT/Claude/Ollama) |
-| Completo | + Whisper local (STT), procesamiento de video, catálogo de tools con RAG |
+| Completo | + Whisper local (STT), catálogo de tools con RAG |
 | A mano | elegís cada extra por separado |
  
 También instalable directo con los extras de `pyproject.toml` (`whisper-local`,
-`video`, `rag`, o `full` para los tres):
+`rag`, `mcp`, o `full` para los tres):
  
 ```bash
-pipx install "call-copilot[whisper-local,video,rag] @ git+https://github.com/EmaSleal/call-copilot.git@main"
+pipx install "call-copilot[whisper-local,rag] @ git+https://github.com/EmaSleal/call-copilot.git@main"
 ```
  
 ### Comandos
@@ -169,18 +165,17 @@ python main.py
  
 SQLite en `data/app.db` corriendo desde el repo, o `~/.call-copilot/data/app.db`
 si instalaste vía pipx/`install.sh` (`src/core/paths.py` resuelve cuál según
-si hay un checkout de git al lado del código corriendo). Ocho tablas —
-`categories`, `video_sessions`, `segments`, `call_sessions`,
-`call_segments`, `tools`, `tool_mentions`, `audit_log` —
-más dos vistas de solo lectura (`unified_segments`, `unified_sessions`) que
-unifican video y llamadas para el tab Historial. `categories` es la única
-taxonomía realmente compartida entre video y llamadas; `video_sessions` y
-`call_sessions` son secuencias de id independientes. `tools`/`tool_mentions`
-alimentan el tab Tools — un tool mencionado en varias llamadas es una sola
-fila en `tools` con una `tool_mention` por cada mención (nunca se pisa el
-enriquecimiento del LLM). `audit_log` registra cada delete humano sobre
-categorías/tools/sesiones (actor, acción, fila) — no hay cola de
-aprobación: un delete manual se ejecuta directo.
+si hay un checkout de git al lado del código corriendo). Seis tablas —
+`categories`, `call_sessions`, `call_segments`, `tools`, `tool_mentions`,
+`audit_log` — más dos vistas de solo lectura (`unified_segments`,
+`unified_sessions`) sobre `call_sessions`/`call_segments` que alimentan el
+tab Historial, con un campo `source` que queda por compatibilidad hacia
+adelante. `tools`/`tool_mentions` alimentan el tab Tools — un tool
+mencionado en varias llamadas es una sola fila en `tools` con una
+`tool_mention` por cada mención (nunca se pisa el enriquecimiento del
+LLM). `audit_log` registra cada delete humano sobre categorías/tools/
+sesiones (actor, acción, fila) — no hay cola de aprobación: un delete
+manual se ejecuta directo.
  
 ## Servidor MCP
  
@@ -202,7 +197,7 @@ al perfil guardado en `~/.call-copilot/install-profile`, para que
 `call-copilot update` no lo pise en la próxima actualización.
 
 También instalable desde cero, mismo patrón que los extras
-`whisper-local,video,rag` de más arriba:
+`whisper-local,rag` de más arriba:
 
 ```bash
 pipx install "call-copilot[mcp] @ git+https://github.com/EmaSleal/call-copilot.git@main"
@@ -212,21 +207,11 @@ Tools que expone:
  
 | Tool | Qué hace |
 |---|---|
-| `search_content` | búsqueda combinable sobre segmentos de video/llamadas (`category_id`, `technology`, `title_query`, `text_query`, `source`), siempre acotada por `limit`/`offset` |
+| `search_content` | búsqueda combinable sobre segmentos de llamadas (`category_id`, `technology`, `title_query`, `text_query`, `source`), siempre acotada por `limit`/`offset` |
 | `list_categories` | taxonomía completa de categorías y subcategorías |
 | `list_tools_catalog` | catálogo de Tools, con filtro opcional por substring |
-| `get_session` | una sesión (video o llamada) más todos sus segmentos, en un solo llamado |
-| `semantic_search` | búsqueda semántica (embeddings) sobre segmentos de video y llamadas — best-effort, ver limitación abajo |
-| `list_reports` | sesiones de video con reporte HTML ya generado, con URL `file://` para abrirlo, filtro opcional por substring de título |
-| `get_report_url` | URL `file://` del reporte de una sesión de video puntual por `session_id`, o `null` si no existe |
-| `start_video_processing` | inicia el procesamiento de un video por URL en background, devuelve `session_id` de inmediato — apagada por default |
-| `get_video_processing_status` | estado de una sesión de video (`pending`/`processing`/`done`/`error`) + `report_url` una vez lista — apagada por default |
- 
-Limitación conocida — `technology` en video: para llamadas, `technology`
-resuelve contra el catálogo curado `tools`/`tool_mentions`. Para video, hoy
-no existe esa data curada, así que el mismo filtro cae a un simple match de
-substring (case-insensitive) contra el texto del segmento — menos preciso
-que el match curado de llamadas, pero no requiere cambios de esquema.
+| `get_session` | una sesión de llamada más todos sus segmentos, en un solo llamado |
+| `semantic_search` | búsqueda semántica (embeddings) sobre segmentos de llamadas — best-effort, ver abajo |
  
 `semantic_search` depende de `chromadb` y `OPENAI_API_KEY`; si cualquiera
 de los dos falta en el entorno del servidor, devuelve una lista vacía en
@@ -239,18 +224,11 @@ las mismas variables de entorno que lee la TUI (mismo `.env`, vía
 `load_dotenv()`) — típicamente ninguna es estrictamente obligatoria salvo
 `OPENAI_API_KEY` si querés `semantic_search` funcionando.
  
-`start_video_processing` / `get_video_processing_status` — superficie de
-escritura del servidor, **apagada por default**, flag:
-`MCP_ALLOW_VIDEO_PROCESSING=true`. Importante: un cliente MCP (Claude
-Desktop incluido) **no hereda el entorno del shell** al lanzar el proceso
-— la variable tiene que ir en el `env` de la config del cliente, no
-alcanza con exportarla en la terminal. Esto origina trabajo nuevo
-(descarga + transcripción, minutos) a partir de
-una URL arbitraria — patrón fire-and-forget + poll, nunca bloquea la
-llamada hasta terminar. Solo un video a la vez: `start_video_processing`
-devuelve `{"ok": false, "error": ...}` si ya hay uno procesándose (claim
-atómico, validado contra procesos concurrentes reales — ver
-`docs/next-steps/feature-proposals.md` punto 5).
+Además existe una superficie de escritura opcional (`save_tool`),
+**apagada por default**, flag: `MCP_ALLOW_TOOL_INGESTION=true`. Importante:
+un cliente MCP (Claude Desktop incluido) **no hereda el entorno del
+shell** al lanzar el proceso — la variable tiene que ir en el `env` de la
+config del cliente, no alcanza con exportarla en la terminal.
  
 ## Pendiente / próximos pasos
  

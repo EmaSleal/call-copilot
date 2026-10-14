@@ -1,13 +1,13 @@
 """
 Shared semantic dedup entry point for AI-suggested categories — one
-sync bridge used by both TUI call sites (src/tui/tabs/video.py and
-src/tui/screens/category_reclassify_modal.py, wired in PR3) so neither
-duplicates the verdict logic (spec: Shared dedup helper).
+sync bridge used by src/tui/screens/category_reclassify_modal.py (wired in
+PR3) so the TUI doesn't duplicate the verdict logic (spec: Shared dedup
+helper).
 
 Hybrid backend selection (spec: Hybrid backend selection):
   - OPENAI_API_KEY set   -> embeddings-based similarity check (CategoriesStore)
   - OPENAI_API_KEY unset -> LLM-as-judge check on the active LLM_BACKEND
-    (src.video.classifier.judge_category_duplicate)
+    (src.processing.classifier.judge_category_duplicate)
 
 Fail-open by design (spec: Fail-open on any uncertainty; D7): the entire
 per-suggestion body runs inside one try/except Exception. dedup_suggestions
@@ -24,7 +24,7 @@ from typing import Optional
 import src.db.database as db
 from src.db.database import Category
 from src.rag.categories_store import CategoriesStore, embedding_text
-from src.video.classifier import judge_category_duplicate
+from src.processing.classifier import judge_category_duplicate
 
 logger = logging.getLogger("call_copilot.processing.category_dedup")
 
@@ -141,9 +141,8 @@ def verdict_label(verdict: DedupVerdict) -> str:
     already duplicates, with the cosine distance appended on the embeddings
     path (spec: Duplicate shown with override).
 
-    Pure function — no side effects, easy to test without Textual. Shared by
-    both TUI call sites (src/tui/tabs/video.py and
-    src/tui/screens/category_reclassify_modal.py) so neither duplicates it.
+    Pure function — no side effects, easy to test without Textual. Used by
+    src/tui/screens/category_reclassify_modal.py.
     """
     s = verdict.suggestion
     if verdict.match is None:

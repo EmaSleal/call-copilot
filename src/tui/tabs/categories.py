@@ -1,4 +1,4 @@
-"""Tab 4: Categorías — CRUD de taxonomía."""
+"""Tab 3: Categorías — CRUD de taxonomía."""
 
 from typing import Optional
 
@@ -22,8 +22,7 @@ def build_category_tree(categories: list[Category]) -> list[tuple[Category, int]
     alphabetical under their parent. A child whose parent is missing is
     rendered as top-level (defensive, never dropped).
 
-    Pure function — no side effects, easy to test without Textual. Mirrors
-    the `_find_otro_category` precedent in `src/tui/tabs/video.py`.
+    Pure function — no side effects, easy to test without Textual.
     """
     by_id = {c.id: c for c in categories}
     children_by_parent: dict[int, list[Category]] = {}

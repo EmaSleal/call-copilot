@@ -1,14 +1,12 @@
 """
-TUI unificada. Corre call-copilot y video transcriber en paralelo
-en el mismo proceso asyncio, con tabs separados por modo.
+TUI de call-copilot.
 
 Tabs:
   [1] Call Copilot   — transcripción en vivo + sugerencias LLM
-  [2] Video          — procesar URL de YouTube, historial de sesiones
-  [3] Buscar         — search full-text en segmentos de BD
-  [4] Categorías     — CRUD de taxonomía
-  [5] Historial      — navegar sesiones de llamada pasadas e ideas extraídas
-  [6] Tools          — catálogo de tecnologías detectadas en las llamadas
+  [2] Buscar         — search full-text en segmentos de BD
+  [3] Categorías     — CRUD de taxonomía
+  [4] Historial      — navegar sesiones de llamada pasadas e ideas extraídas
+  [5] Tools          — catálogo de tecnologías detectadas en las llamadas
 
 Este módulo es solo el shell de la app (UnifiedApp) y el entrypoint. Cada
 tab/screen vive en su propio módulo bajo tabs/ y screens/ — ver ahí por la
@@ -35,7 +33,6 @@ from src.tui.tabs.categories import CategoriesTab
 from src.tui.tabs.historial import HistorialTab
 from src.tui.tabs.search import SearchTab
 from src.tui.tabs.tools import ToolsTab
-from src.tui.tabs.video import VideoTab
 
 load_dotenv(env_store.ENV_PATH)
 
@@ -73,13 +70,6 @@ class UnifiedApp(App):
     #cat-layout { height: 1fr; }
     #cat-list-panel { width: 50%; padding-right: 2; }
     #cat-form-panel { width: 50%; border-left: solid #334155; padding-left: 2; }
-    ProgressBar { margin: 1 0; }
-    #video-status { margin-bottom: 1; }
-    #lbl-sessions { margin-bottom: 1; }
-    #suggestions-list { height: 8; border: solid #334155; background: #1e293b; }
-    #suggestion-feedback { margin-top: 1; }
-    #tab-video Horizontal { height: auto; }
-    #tab-video Horizontal Input { width: 1fr; }
     #tab-search Horizontal { height: auto; }
     #tab-search Horizontal Input { width: 1fr; }
     #tab-tools Horizontal { height: auto; }
@@ -95,22 +85,19 @@ class UnifiedApp(App):
     BINDINGS = [
         Binding("ctrl+q", "quit", t("app.quit_binding")),
         Binding("1", "switch_tab('tab-call')", "Call Copilot"),
-        Binding("2", "switch_tab('tab-video')", "Video"),
-        Binding("3", "switch_tab('tab-search')", t("app.search_binding")),
-        Binding("4", "switch_tab('tab-categories')", t("app.categories_binding")),
-        Binding("5", "switch_tab('tab-historial')", t("app.historial_binding")),
-        Binding("6", "switch_tab('tab-tools')", "Tools"),
+        Binding("2", "switch_tab('tab-search')", t("app.search_binding")),
+        Binding("3", "switch_tab('tab-categories')", t("app.categories_binding")),
+        Binding("4", "switch_tab('tab-historial')", t("app.historial_binding")),
+        Binding("5", "switch_tab('tab-tools')", "Tools"),
         Binding("ctrl+s", "open_settings", t("app.settings_binding")),
     ]
 
-    TITLE = "Unified Copilot"
-    SUB_TITLE = "Call Copilot + Video Transcriber"
+    TITLE = "Call Copilot"
 
     def compose(self) -> ComposeResult:
         yield Header()
         with TabbedContent():
             yield CallCopilotTab()
-            yield VideoTab()
             yield SearchTab()
             yield CategoriesTab()
             yield HistorialTab()

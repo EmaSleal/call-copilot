@@ -41,8 +41,8 @@ class TestBuildPipSpec:
         assert spec.startswith("call-copilot[rag] @ ")
 
     def test_multiple_extras_comma_joined(self):
-        spec = build_pip_spec("rag,video", ref="main")
-        assert spec.startswith("call-copilot[rag,video] @ ")
+        spec = build_pip_spec("rag,whisper-local", ref="main")
+        assert spec.startswith("call-copilot[rag,whisper-local] @ ")
 
     def test_spec_points_at_the_given_ref(self):
         spec = build_pip_spec("", ref="v0.2.0")
@@ -85,9 +85,9 @@ class TestReadInstallProfile:
 
     def test_existing_file_is_read_and_stripped(self, tmp_path, monkeypatch):
         profile_file = tmp_path / "install-profile"
-        profile_file.write_text("rag,video\n")
+        profile_file.write_text("rag,whisper-local\n")
         monkeypatch.setattr("src.core.updater._profile_path", lambda: profile_file)
-        assert read_install_profile() == "rag,video"
+        assert read_install_profile() == "rag,whisper-local"
 
 
 class TestRunUpdate:

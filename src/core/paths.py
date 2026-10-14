@@ -1,6 +1,6 @@
 """
 Resolves the base directory for all persistent app state (DB, .env,
-chroma, whisper-text, video downloads). Zero I/O beyond a filesystem stat
+chroma, whisper-text). Zero I/O beyond a filesystem stat
 and os.getenv — safe to import from the hot path.
 
 Dev checkouts (git repo present next to the running code) keep the

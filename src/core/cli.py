@@ -18,7 +18,7 @@ _HELP_ALIASES = ("help", "--help", "-h")
 
 
 def run_help() -> int:
-    print("call-copilot — copiloto de llamadas + transcriptor de video (TUI)")
+    print("call-copilot — copiloto de llamadas (TUI)")
     print()
     print("Uso: call-copilot [comando]")
     print()

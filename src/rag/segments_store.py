@@ -1,9 +1,8 @@
 """
-Chroma-backed semantic store for cross-session segment search — video
-segments AND call segments, keyed by a composite "<source>:<id>" id.
-segments.id and call_segments.id are independent sequences that can
-collide, same reason unified_segments/Historial already uses composite
-"video:N"/"call:N" row keys.
+Chroma-backed semantic store for cross-session segment search, keyed by a
+composite "<source>:<id>" id — same "source:N" row-key pattern
+unified_segments/Historial already uses, kept here for forward
+compatibility with a future second segment source.
 """
 
 import logging

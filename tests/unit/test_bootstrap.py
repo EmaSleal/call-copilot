@@ -7,7 +7,8 @@ whisper_local is already active at app startup, before Textual takes over
 the terminal. Switching to whisper_local mid-session (without restarting)
 used to fall through to constructing WhisperModel() live, which crashes
 with a cryptic `ValueError: bad value(s) in fds_to_keep` — the same tqdm/
-Textual file-descriptor collision already fixed for the video pipeline.
+Textual file-descriptor collision tqdm-based progress bars trigger under
+Textual's terminal takeover.
 _build_stt() must instead fail with a clear, actionable message.
 """
 

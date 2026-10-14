@@ -7,7 +7,7 @@ pesadas — seguro de importar desde el hot path (pipeline.py) sin arrastrar
 dotenv ni escritura a disco. La contraparte de escritura vive en
 src/core/env_store.py, deliberadamente separada por esa misma razón.
 
-Nota: el clasificador batch de video (src/video/classifier.py,
+Nota: el clasificador batch (src/processing/classifier.py,
 src/processing/session_processor.py) lee la MISMA variable LLM_BACKEND pero
 con su propio default ("ollama") aplicado inline — eso queda fuera de
 alcance de este módulo (ver Non-Goals del diseño de config-settings-panel).
@@ -20,7 +20,6 @@ from pathlib import Path
 DEFAULT_LLM_BACKEND = "gpt"
 DEFAULT_STT_BACKEND = "deepgram"
 DEFAULT_WHISPER_MODEL_CALL = "large-v3-turbo"
-DEFAULT_WHISPER_MODEL_VIDEO = "base"
 DEFAULT_SILENCE_THRESHOLD_MS = 2000
 DEFAULT_LANGUAGE = "en"
 
@@ -32,29 +31,23 @@ class Scope(str, Enum):
 
     RESTART = "restart"
     NEXT_CALL = "next_call"
-    NEXT_VIDEO = "next_video"
     MCP_RESTART = "mcp_restart"
 
 
 # Claves que requieren reiniciar el proceso porque su valor queda "congelado"
 # en un singleton cargado antes de que Textual abra la terminal
-# (_preload_models en src/tui/bootstrap.py). WHISPER_MODEL_VIDEO NO está acá:
-# _process_video() lo relee por job, así que un badge de "reiniciar" sería
-# una afirmación falsa. SILENCE_THRESHOLD_MS sí — el SileroVAD que arma
-# _preload_models() es el mismo singleton reusado en cada llamada.
+# (_preload_models en src/tui/bootstrap.py).
 RESTART_KEYS = {"STT_BACKEND", "WHISPER_MODEL_CALL", "SILENCE_THRESHOLD_MS"}
 
 # MCP_RESTART is distinct from RESTART: restarting the TUI process does
-# nothing for these two — src/mcp/server.py runs as a SEPARATE process
+# nothing for this — src/mcp/server.py runs as a SEPARATE process
 # launched by an external MCP client (e.g. Claude Desktop), which is the
 # process that actually needs restarting to pick up the new value via
 # load_dotenv() at its own startup.
 _SCOPE_MAP: dict[str, Scope] = {
     "STT_BACKEND": Scope.RESTART,
     "WHISPER_MODEL_CALL": Scope.RESTART,
-    "WHISPER_MODEL_VIDEO": Scope.NEXT_VIDEO,
     "SILENCE_THRESHOLD_MS": Scope.RESTART,
-    "MCP_ALLOW_VIDEO_PROCESSING": Scope.MCP_RESTART,
     "MCP_ALLOW_TOOL_INGESTION": Scope.MCP_RESTART,
 }
 
@@ -85,17 +78,6 @@ def whisper_model_call() -> str:
     return value or DEFAULT_WHISPER_MODEL_CALL
 
 
-def whisper_model_video() -> str:
-    """
-    Tamaño de modelo Whisper para el transcriptor de video (batch).
-
-    Orden de resolución: WHISPER_MODEL_VIDEO → WHISPER_MODEL (legado) →
-    default. La cadena vacía cuenta como "no configurado" en cada paso.
-    """
-    value = os.getenv("WHISPER_MODEL_VIDEO") or os.getenv("WHISPER_MODEL")
-    return value or DEFAULT_WHISPER_MODEL_VIDEO
-
-
 def tech_scout_db_path() -> str:
     """Path to tech-scout's tools.db, source for the Settings 'sync' action.
     Default assumes tech-scout's own default layout on this machine."""
@@ -120,13 +102,6 @@ def silence_threshold_ms() -> int:
 def language() -> str:
     """Idioma activo de la UI ('es' o 'en'). Default: 'en'."""
     return _getenv_or_default("LANGUAGE", DEFAULT_LANGUAGE)
-
-
-def mcp_allow_video_processing() -> bool:
-    """Whether the MCP server's start_video_processing/get_video_processing_status
-    write tools are enabled. Off by default — same parsing as
-    src/mcp/server.py's own gate."""
-    return os.getenv("MCP_ALLOW_VIDEO_PROCESSING", "false").lower() == "true"
 
 
 def mcp_allow_tool_ingestion() -> bool:

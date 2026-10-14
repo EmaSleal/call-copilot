@@ -1,7 +1,7 @@
 """
 Shared sync one-shot LLM backend selector (claude/ollama/gpt) for batch
 processing: segment classification, category suggestion/dedup/parent-naming
-(src/video/classifier.py), call transcript grouping
+(src/processing/classifier.py), call transcript grouping
 (src/processing/session_processor.py), and tool extraction
 (src/processing/tool_extractor.py) — previously each hand-rolled an
 identical claude/ollama/gpt triple-branch, verbatim duplicated in the

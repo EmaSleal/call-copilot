@@ -70,6 +70,26 @@ def get_call_segments_by_ids(ids: list[int]) -> list[CallSegment]:
     return [by_id[i] for i in ids if i in by_id]
 
 
+def search_call_segments(query: str, category_id: int = None) -> list[dict]:
+    """Búsqueda de texto en segmentos de llamada, con join a sesión y categoría."""
+    with database._conn() as conn:
+        sql = """
+            SELECT cs.*, c.name as cat_name, c.color as cat_color,
+                   s.title as session_title
+            FROM call_segments cs
+            LEFT JOIN categories c ON cs.category_id = c.id
+            LEFT JOIN call_sessions s ON cs.call_session_id = s.id
+            WHERE cs.text LIKE ? AND cs.deleted_at IS NULL
+        """
+        params: list = [f"%{query}%"]
+        if category_id:
+            sql += " AND cs.category_id = ?"
+            params.append(category_id)
+        sql += " ORDER BY s.created_at DESC, cs.sort_order"
+        rows = conn.execute(sql, params).fetchall()
+    return [dict(r) for r in rows]
+
+
 def delete_call_segment(segment_id: int, actor: str = "human") -> None:
     with database._conn() as conn:
         conn.execute(

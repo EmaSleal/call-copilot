@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "call-copilot"
 version = "0.15.0"
-description = "Live call transcription copilot + YouTube video transcriber — Textual TUI"
+description = "Live call transcription copilot — Textual TUI"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
@@ -54,14 +54,11 @@ whisper-local = [
     "nvidia-cublas-cu12>=12.0; sys_platform != 'darwin'",
     "nvidia-cudnn-cu12>=9.0; sys_platform != 'darwin'",
 ]
-# YouTube/video download + batch transcription (Video tab). imageio-ffmpeg
-# bundles a portable ffmpeg binary — no system install / PATH entry needed.
-video = ["yt-dlp>=2024.1.0", "openai-whisper>=20231117", "imageio-ffmpeg>=0.5.0"]
-# Persistent semantic search: live in-call RAG, the Tools catalog, segment
-# search, and category dedup. Lazily imported (src/rag/chroma_store.py,
-# src/rag/tools_store.py, src/rag/segments_store.py, src/rag/categories_store.py)
-# — the app runs fine without it, those features just no-op (category dedup
-# falls back to the LLM-judge path, see src/processing/category_dedup.py).
+# Persistent semantic search: live in-call RAG, segment search, and
+# category dedup. Lazily imported (src/rag/chroma_store.py,
+# src/rag/segments_store.py, src/rag/categories_store.py) — the app runs
+# fine without it, those features just no-op (category dedup falls back
+# to the LLM-judge path, see src/processing/category_dedup.py).
 rag = ["chromadb>=0.5.0"]
 # Read-only MCP server (src/mcp/) exposing session/category/tools/content
 # data to MCP clients (e.g. Claude Desktop) via the `call-copilot-mcp`
@@ -74,9 +71,6 @@ mcp = ["mcp>=1.0.0"]
 # for a git install as it does once/if this is ever published to PyPI.
 full = [
     "faster-whisper>=1.0",
-    "yt-dlp>=2024.1.0",
-    "openai-whisper>=20231117",
-    "imageio-ffmpeg>=0.5.0",
     "chromadb>=0.5.0",
     "mcp>=1.0.0",
 ]

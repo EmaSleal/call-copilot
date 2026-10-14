@@ -14,7 +14,6 @@ from src.core.config_defaults import (
     DEFAULT_LLM_BACKEND,
     DEFAULT_STT_BACKEND,
     DEFAULT_WHISPER_MODEL_CALL,
-    DEFAULT_WHISPER_MODEL_VIDEO,
     DEFAULT_SILENCE_THRESHOLD_MS,
     WHISPER_SIZES,
     RESTART_KEYS,
@@ -23,12 +22,10 @@ from src.core.config_defaults import (
     llm_backend,
     stt_backend,
     whisper_model_call,
-    whisper_model_video,
     silence_threshold_ms,
     scope_of,
     tech_scout_db_path,
     mcp_allow_tool_ingestion,
-    mcp_allow_video_processing,
 )
 
 
@@ -90,29 +87,6 @@ class TestWhisperModelCall:
         assert whisper_model_call() == DEFAULT_WHISPER_MODEL_CALL
 
 
-class TestWhisperModelVideo:
-    def test_defaults_to_base_when_unset(self, monkeypatch):
-        monkeypatch.delenv("WHISPER_MODEL_VIDEO", raising=False)
-        monkeypatch.delenv("WHISPER_MODEL", raising=False)
-        assert whisper_model_video() == "base"
-        assert DEFAULT_WHISPER_MODEL_VIDEO == "base"
-
-    def test_falls_back_to_legacy_whisper_model(self, monkeypatch):
-        monkeypatch.delenv("WHISPER_MODEL_VIDEO", raising=False)
-        monkeypatch.setenv("WHISPER_MODEL", "medium")
-        assert whisper_model_video() == "medium"
-
-    def test_new_var_wins_over_legacy(self, monkeypatch):
-        monkeypatch.setenv("WHISPER_MODEL_VIDEO", "tiny")
-        monkeypatch.setenv("WHISPER_MODEL", "medium")
-        assert whisper_model_video() == "tiny"
-
-    def test_empty_new_var_falls_back_to_legacy(self, monkeypatch):
-        monkeypatch.setenv("WHISPER_MODEL_VIDEO", "")
-        monkeypatch.setenv("WHISPER_MODEL", "medium")
-        assert whisper_model_video() == "medium"
-
-
 class TestSilenceThresholdMs:
     def test_defaults_to_2000_when_unset(self, monkeypatch):
         monkeypatch.delenv("SILENCE_THRESHOLD_MS", raising=False)
@@ -140,14 +114,12 @@ class TestWhisperSizes:
 
     def test_defaults_are_valid_sizes(self):
         assert DEFAULT_WHISPER_MODEL_CALL in WHISPER_SIZES
-        assert DEFAULT_WHISPER_MODEL_VIDEO in WHISPER_SIZES
 
 
 class TestScopeOf:
     @pytest.mark.parametrize("key,expected", [
         ("STT_BACKEND", Scope.RESTART),
         ("WHISPER_MODEL_CALL", Scope.RESTART),
-        ("WHISPER_MODEL_VIDEO", Scope.NEXT_VIDEO),
         ("SILENCE_THRESHOLD_MS", Scope.RESTART),
         ("LLM_BACKEND", Scope.NEXT_CALL),
         ("OPENAI_API_KEY", Scope.NEXT_CALL),
@@ -167,15 +139,11 @@ class TestScopeOf:
         for key in RESTART_KEYS:
             assert scope_of(key) == Scope.RESTART
 
-    @pytest.mark.parametrize(
-        "key",
-        ["MCP_ALLOW_VIDEO_PROCESSING", "MCP_ALLOW_TOOL_INGESTION"],
-    )
-    def test_mcp_write_flags_map_to_mcp_restart_scope(self, key):
+    def test_mcp_write_flag_maps_to_mcp_restart_scope(self):
         # A distinct scope from RESTART: restarting the TUI does nothing
-        # for these — the process that needs restarting is the external
+        # for this — the process that needs restarting is the external
         # MCP client (e.g. Claude Desktop), which the TUI doesn't control.
-        assert scope_of(key) == Scope.MCP_RESTART
+        assert scope_of("MCP_ALLOW_TOOL_INGESTION") == Scope.MCP_RESTART
 
 
 class TestLanguage:
@@ -205,20 +173,6 @@ class TestTechScoutDbPath:
     def test_honors_explicit_value(self, monkeypatch):
         monkeypatch.setenv("TECH_SCOUT_DB_PATH", "/custom/path/tools.db")
         assert tech_scout_db_path() == "/custom/path/tools.db"
-
-
-class TestMcpAllowVideoProcessing:
-    def test_defaults_to_false_when_unset(self, monkeypatch):
-        monkeypatch.delenv("MCP_ALLOW_VIDEO_PROCESSING", raising=False)
-        assert mcp_allow_video_processing() is False
-
-    def test_true_case_insensitive(self, monkeypatch):
-        monkeypatch.setenv("MCP_ALLOW_VIDEO_PROCESSING", "TRUE")
-        assert mcp_allow_video_processing() is True
-
-    def test_any_other_value_is_false(self, monkeypatch):
-        monkeypatch.setenv("MCP_ALLOW_VIDEO_PROCESSING", "1")
-        assert mcp_allow_video_processing() is False
 
 
 class TestMcpAllowToolIngestion:

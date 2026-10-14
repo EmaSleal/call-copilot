@@ -1,9 +1,7 @@
 """
-Unit tests for global (cross-session) category lookups and the call-side
-update_segment_category equivalent — needed by Historial's "reclassify
-this category everywhere" tool (mirrors Video's session-scoped
-_reclassify_otros, but global and works for any category, not just
-"Otro"/"Otros").
+Unit tests for global (cross-session) call-segment category lookups and
+updates — needed by Historial's "reclassify this category everywhere"
+tool, global and works for any category.
 """
 
 import pytest
@@ -16,32 +14,6 @@ def patched_db(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(db_module, "DB_PATH", tmp_path / "test_category_global.db")
     db_module.init_db()
     return db_module
-
-
-class TestGetSegmentsByCategoryGlobal:
-    def test_returns_matches_across_multiple_sessions(self, patched_db):
-        from src.db.database import Segment
-
-        cat = patched_db.create_category("Categoría Test", "desc")
-        s1 = patched_db.create_video_session(title="v1", url="http://x")
-        s2 = patched_db.create_video_session(title="v2", url="http://y")
-        seg1 = patched_db.save_segment(
-            Segment(id=None, session_id=s1.id, start_s=0.0, end_s=1.0, text="uno", category_id=cat.id)
-        )
-        seg2 = patched_db.save_segment(
-            Segment(id=None, session_id=s2.id, start_s=0.0, end_s=1.0, text="dos", category_id=cat.id)
-        )
-        patched_db.save_segment(
-            Segment(id=None, session_id=s1.id, start_s=1.0, end_s=2.0, text="otro", category_id=None)
-        )
-
-        results = patched_db.get_segments_by_category_global(cat.id)
-
-        assert {r.id for r in results} == {seg1.id, seg2.id}
-
-    def test_no_matches_returns_empty_list(self, patched_db):
-        cat = patched_db.create_category("Categoría Test", "desc")
-        assert patched_db.get_segments_by_category_global(cat.id) == []
 
 
 class TestGetCallSegmentsByCategoryGlobal:

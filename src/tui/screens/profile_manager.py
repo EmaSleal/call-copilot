@@ -120,9 +120,8 @@ class ProfileManagerScreen(ModalScreen):
 
     def retranslate(self) -> None:
         """Re-apply t() to static chrome and rebuild the DataTable's
-        columns (clear+re-add, then repopulate — mirrors video.py's
-        retranslate()). Doesn't touch typed form Input values (user data)
-        or the feedback line (result state)."""
+        columns (clear+re-add, then repopulate). Doesn't touch typed form
+        Input values (user data) or the feedback line (result state)."""
         self.query_one("#pm-title", Label).update(t("profile_manager.title"))
         self.query_one("#btn-pm-close", Button).label = t("profile_manager.close_button")
         self.query_one("#lbl-pm-existing", Label).update(t("profile_manager.existing_label"))

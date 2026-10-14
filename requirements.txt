@@ -6,15 +6,11 @@ torchaudio>=2.0
 
 # ── STT ────────────────────────────────────────────────────
 faster-whisper>=1.0          # STT local (whisper_local)
-openai-whisper>=20231117     # Video transcriber (batch)
 websockets>=13.0             # Deepgram streaming — additional_headers kwarg needs 13.0+
 
 # ── LLM ────────────────────────────────────────────────────
 anthropic>=0.41          # 0.40 predates the Models API (client.models.list())
 openai>=1.30
-
-# ── Video ──────────────────────────────────────────────────
-yt-dlp>=2024.1.0             # descarga de video/audio
 
 # ── BD ─────────────────────────────────────────────────────
 # sqlite3 viene con Python — sin dependencia externa

@@ -1,9 +1,10 @@
 """
 Unit tests for SegmentsSearchStore (src/rag/segments_store.py) — Chroma-
-backed semantic search across video segments AND call segments, keyed by
-a composite "<source>:<id>" id (segments.id and call_segments.id are
-independent sequences that can collide — same convention Historial
-already uses for its own composite row keys).
+backed semantic search over call segments, keyed by a composite
+"<source>:<id>" id (forward-compatible with a future second segment
+source — same convention Historial already uses for its own composite
+row keys; "other_source" below is a stand-in for that, not a real
+source).
 
 chromadb and openai are stubbed as MagicMock modules in tests/conftest.py.
 """
@@ -45,12 +46,12 @@ class TestAddSegment:
         from src.rag.segments_store import SegmentsSearchStore
 
         store = SegmentsSearchStore(openai_client=mock_openai_client)
-        result = await store.add_segment("video", 42, "hablamos de Deepgram")
+        result = await store.add_segment("other_source", 42, "hablamos de Deepgram")
 
         assert result is True
         mock_collection.upsert.assert_called_once()
         _, kwargs = mock_collection.upsert.call_args
-        assert kwargs["ids"] == ["video:42"]
+        assert kwargs["ids"] == ["other_source:42"]
 
     @pytest.mark.asyncio
     async def test_call_source_composite_id(self, mock_chromadb, mock_collection, mock_openai_client):
@@ -67,7 +68,7 @@ class TestAddSegment:
         from src.rag.segments_store import SegmentsSearchStore
 
         store = SegmentsSearchStore(openai_client=None)
-        result = await store.add_segment("video", 1, "texto")
+        result = await store.add_segment("other_source", 1, "texto")
 
         assert result is False
         mock_collection.upsert.assert_not_called()
@@ -77,7 +78,7 @@ class TestAddSegment:
         from src.rag.segments_store import SegmentsSearchStore
 
         store = SegmentsSearchStore(openai_client=mock_openai_client)
-        result = await store.add_segment("video", 1, "   ")
+        result = await store.add_segment("other_source", 1, "   ")
 
         assert result is False
         mock_collection.upsert.assert_not_called()
@@ -89,10 +90,10 @@ class TestDeleteSegment:
         from src.rag.segments_store import SegmentsSearchStore
 
         store = SegmentsSearchStore(openai_client=mock_openai_client)
-        result = await store.delete_segment("video", 42)
+        result = await store.delete_segment("other_source", 42)
 
         assert result is True
-        mock_collection.delete.assert_called_once_with(ids=["video:42"])
+        mock_collection.delete.assert_called_once_with(ids=["other_source:42"])
 
     @pytest.mark.asyncio
     async def test_call_source_composite_id(self, mock_chromadb, mock_collection, mock_openai_client):
@@ -112,7 +113,7 @@ class TestDeleteSegment:
         monkeypatch.setitem(sys.modules, "chromadb", None)
         store = SegmentsSearchStore(openai_client=mock_openai_client)
 
-        result = await store.delete_segment("video", 1)
+        result = await store.delete_segment("other_source", 1)
 
         assert result is False
 
@@ -126,14 +127,14 @@ class TestSearch:
 
         mock_collection.count.return_value = 2
         mock_collection.query.return_value = {
-            "ids": [["video:42", "call:7"]],
+            "ids": [["other_source:42", "call:7"]],
             "distances": [[0.1, 0.3]],
         }
 
         store = SegmentsSearchStore(openai_client=mock_openai_client)
         results = await store.search("proveedor STT")
 
-        assert results == [("video", 42, 0.1), ("call", 7, 0.3)]
+        assert results == [("other_source", 42, 0.1), ("call", 7, 0.3)]
 
     @pytest.mark.asyncio
     async def test_empty_collection_returns_empty_list(
@@ -173,7 +174,7 @@ class TestSegmentsSearchStoreWithoutChromadb:
         monkeypatch.setitem(sys.modules, "chromadb", None)
         store = SegmentsSearchStore(openai_client=mock_openai_client)
 
-        assert await store.add_segment("video", 1, "texto") is False
+        assert await store.add_segment("other_source", 1, "texto") is False
 
     @pytest.mark.asyncio
     async def test_search_without_chromadb_returns_empty_list(self, monkeypatch, mock_openai_client):

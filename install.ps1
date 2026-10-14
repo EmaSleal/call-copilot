@@ -82,22 +82,17 @@ if (-not (Get-Command pipx -ErrorAction SilentlyContinue)) {
 # -- perfil de instalacion ----------------------------------------------------
 Write-Host "Que queres instalar?"
 Write-Host "  1) Minimo   - solo llamadas en vivo (Deepgram + GPT/Claude/Ollama)"
-Write-Host "  2) Completo - todo (Whisper local, video, catalogo de tools con RAG)"
+Write-Host "  2) Completo - todo (Whisper local, catalogo de tools con RAG)"
 Write-Host "  3) Elegir a mano"
 $profileChoice = Read-PromptWithDefault "Elegi [1-3] (default: 1)" "1"
 
 $extras = ""
 switch ($profileChoice) {
     "1" { $extras = "" }
-    "2" { $extras = "whisper-local,video,rag" }
+    "2" { $extras = "whisper-local,rag" }
     "3" {
         $reply = Read-PromptWithDefault "Whisper local para STT? [y/N]" "n"
         if ($reply -match "^[Yy]") { $extras = "whisper-local" }
-
-        $reply = Read-PromptWithDefault "Procesar videos de YouTube? [y/N]" "n"
-        if ($reply -match "^[Yy]") {
-            if ($extras) { $extras = "$extras,video" } else { $extras = "video" }
-        }
 
         $reply = Read-PromptWithDefault "Catalogo de tools con busqueda semantica (RAG)? [y/N]" "n"
         if ($reply -match "^[Yy]") {

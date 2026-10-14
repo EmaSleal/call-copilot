@@ -15,18 +15,13 @@ from src.i18n import t
 
 
 def _update_fragment_category(source: str, fragment_id: int, category_id: int) -> None:
-    """Dispatch to the right DAO based on source — segments.id and
-    call_segments.id are INDEPENDENT AUTOINCREMENT sequences that can
-    collide, so the source tag from the fragment's composite row key
-    decides which table to write to. An `else` fallback here would silently
-    write a video id into call_segments and corrupt an unrelated call
-    fragment; unknown sources fail closed instead."""
-    if source == "video":
-        db.update_segment_category(fragment_id, category_id)
-    elif source == "call":
+    """Dispatch to the right DAO based on source. Only 'call' exists today
+    — fails closed on anything else instead of guessing, so a future
+    second source can't silently get routed into call_segments."""
+    if source == "call":
         db.update_call_segment_category(fragment_id, category_id)
     else:
-        raise ValueError(f"unknown source: {source!r} (expected 'video' or 'call')")
+        raise ValueError(f"unknown source: {source!r} (expected 'call')")
 
 
 class FragmentEditModal(ModalScreen):

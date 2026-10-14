@@ -17,7 +17,6 @@ Covers:
   1.7  create_call_session(title=...) → object with .id and .title
   1.8  get_call_segments(call_session_id) → list of CallSegment rows
   1.9  set_call_session_title(call_session_id, title) → updates title
-  1.10 Legacy video segment (in segments table) NOT returned by get_call_segments
 """
 
 import sqlite3
@@ -147,12 +146,6 @@ class TestCallSegmentDataclass:
         from src.db.database import CallSegment
         seg = CallSegment(id=None, call_session_id=2, sort_order=1, text="Another idea")
         assert seg.category_id is None
-
-    def test_segment_dataclass_unchanged(self, patched_db):
-        """Original Segment dataclass must be unchanged (session_id still required)."""
-        from src.db.database import Segment
-        seg = Segment(id=None, session_id=1, start_s=0.0, end_s=1.0, text="video")
-        assert seg.session_id == 1
 
 
 # ─────────────────────────────────────────────────────────────
@@ -342,42 +335,3 @@ class TestSetCallSessionTitle:
         s2 = next(s for s in sessions if s.id == cs2.id)
         assert s2.title == "Session two"
 
-
-# ─────────────────────────────────────────────────────────────
-# Phase 1.3 — Isolation: video segments untouched
-# ─────────────────────────────────────────────────────────────
-
-class TestSegmentIsolation:
-    def test_video_segments_table_untouched(self, patched_db, db_path):
-        """
-        The segments table schema must remain unchanged
-        (session_id NOT NULL, no call_session_id column added).
-        """
-        conn = sqlite3.connect(db_path)
-        try:
-            rows = conn.execute("PRAGMA table_info(segments)").fetchall()
-            col_map = {r[1]: r for r in rows}
-        finally:
-            conn.close()
-        # session_id still exists and is NOT NULL
-        assert "session_id" in col_map
-        assert col_map["session_id"][3] == 1, "segments.session_id must remain NOT NULL"
-        # call_session_id must NOT be added to segments table
-        assert "call_session_id" not in col_map
-
-    def test_call_segments_separate_from_segments(self, patched_db):
-        """
-        Inserting a CallSegment must not create a row in segments, and vice versa.
-        """
-        from src.db.database import CallSegment
-        cs = patched_db.create_call_session(
-            context="ctx",
-            transcript_path="whisper-text/s.txt",
-        )
-        patched_db.save_call_segment(
-            CallSegment(id=None, call_session_id=cs.id, sort_order=0, text="Call idea")
-        )
-
-        # get_segments looks at the segments table — must return empty for any video session id
-        results = patched_db.get_segments(9999)
-        assert results == []

@@ -41,10 +41,6 @@ for _name in ["torch", "torchaudio", "torchaudio.transforms"]:
 if "faster_whisper" not in sys.modules:
     _mock_module("faster_whisper")
 
-# ── whisper (openai-whisper, used by src/video/pipeline.py) ───────────────────
-if "whisper" not in sys.modules:
-    _mock_module("whisper")
-
 # ── textual ───────────────────────────────────────────────────────────────────
 for _name in [
     "textual",
@@ -77,7 +73,7 @@ if "dotenv" not in sys.modules:
 
 # ── i18n-hot-swap-tui: shared language fixtures ─────────────────────────────
 # Pin the active src.i18n language for a test body, restore after. Shared
-# across every migrated TUI module's tests (settings, call, video, ... —
+# across every migrated TUI module's tests (settings, call, ... —
 # see sdd/i18n-hot-swap-tui/tasks) instead of duplicating this per file.
 
 @pytest.fixture

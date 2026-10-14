@@ -27,7 +27,7 @@ from src.core.config_defaults import WHISPER_SIZES
 
 class TestValidateSettingsForm:
     def test_valid_whisper_sizes_pass(self):
-        values = {"WHISPER_MODEL_CALL": "large-v3-turbo", "WHISPER_MODEL_VIDEO": "base"}
+        values = {"WHISPER_MODEL_CALL": "large-v3-turbo"}
         assert validate_settings_form(values) == []
 
     def test_invalid_whisper_model_call_is_rejected(self):
@@ -35,16 +35,6 @@ class TestValidateSettingsForm:
         errors = validate_settings_form(values)
         assert len(errors) == 1
         assert "WHISPER_MODEL_CALL" in errors[0]
-
-    def test_invalid_whisper_model_video_is_rejected(self):
-        values = {"WHISPER_MODEL_VIDEO": "gigantic"}
-        errors = validate_settings_form(values)
-        assert len(errors) == 1
-        assert "WHISPER_MODEL_VIDEO" in errors[0]
-
-    def test_both_invalid_reports_two_errors(self):
-        values = {"WHISPER_MODEL_CALL": "bogus", "WHISPER_MODEL_VIDEO": "also-bogus"}
-        assert len(validate_settings_form(values)) == 2
 
     def test_empty_whisper_value_is_not_rejected(self):
         assert validate_settings_form({"WHISPER_MODEL_CALL": ""}) == []
@@ -54,7 +44,7 @@ class TestValidateSettingsForm:
 
     @pytest.mark.parametrize("size", WHISPER_SIZES)
     def test_every_known_size_is_accepted(self, size):
-        values = {"WHISPER_MODEL_CALL": size, "WHISPER_MODEL_VIDEO": size}
+        values = {"WHISPER_MODEL_CALL": size}
         assert validate_settings_form(values) == []
 
     def test_valid_silence_threshold_passes(self):
@@ -120,11 +110,6 @@ class TestSummarizeScopes:
         result = summarize_scopes(["WHISPER_MODEL_CALL"])
         assert "reiniciar" in result["WHISPER_MODEL_CALL"]
 
-    def test_whisper_model_video_maps_to_next_video_badge_not_restart(self, spanish):
-        result = summarize_scopes(["WHISPER_MODEL_VIDEO"])
-        assert "reiniciar" not in result["WHISPER_MODEL_VIDEO"]
-        assert "video" in result["WHISPER_MODEL_VIDEO"]
-
     def test_silence_threshold_maps_to_restart_badge(self, spanish):
         result = summarize_scopes(["SILENCE_THRESHOLD_MS"])
         assert "reiniciar" in result["SILENCE_THRESHOLD_MS"]
@@ -145,19 +130,15 @@ class TestSummarizeScopes:
         result = summarize_scopes(["STT_BACKEND", "LLM_BACKEND"])
         assert set(result.keys()) == {"STT_BACKEND", "LLM_BACKEND"}
 
-    def test_mcp_allow_video_processing_maps_to_a_distinct_mcp_badge(self, spanish):
+    def test_mcp_allow_tool_ingestion_maps_to_a_distinct_mcp_badge(self, spanish):
         # Distinct wording from the plain "requiere reiniciar" badge:
         # restarting the TUI does nothing for this — the process that
         # needs restarting is the external MCP client (e.g. Claude
         # Desktop), not call-copilot itself.
-        result = summarize_scopes(["MCP_ALLOW_VIDEO_PROCESSING"])
-        stt_badge = summarize_scopes(["STT_BACKEND"])["STT_BACKEND"]
-        assert "MCP" in result["MCP_ALLOW_VIDEO_PROCESSING"]
-        assert result["MCP_ALLOW_VIDEO_PROCESSING"] != stt_badge
-
-    def test_mcp_allow_tool_ingestion_maps_to_the_same_mcp_badge(self, spanish):
         result = summarize_scopes(["MCP_ALLOW_TOOL_INGESTION"])
+        stt_badge = summarize_scopes(["STT_BACKEND"])["STT_BACKEND"]
         assert "MCP" in result["MCP_ALLOW_TOOL_INGESTION"]
+        assert result["MCP_ALLOW_TOOL_INGESTION"] != stt_badge
 
 
 # ---------------------------------------------------------------------------
@@ -231,11 +212,6 @@ class TestSummarizeScopesEnglish:
     def test_stt_backend_maps_to_restart_badge(self, english):
         result = summarize_scopes(["STT_BACKEND"])
         assert "restart" in result["STT_BACKEND"]
-
-    def test_whisper_model_video_maps_to_next_video_badge_not_restart(self, english):
-        result = summarize_scopes(["WHISPER_MODEL_VIDEO"])
-        assert "restart" not in result["WHISPER_MODEL_VIDEO"]
-        assert "video" in result["WHISPER_MODEL_VIDEO"]
 
     def test_llm_backend_maps_to_next_call_badge(self, english):
         result = summarize_scopes(["LLM_BACKEND"])

@@ -42,7 +42,7 @@ def build_server():
         description=(
             "Read-only access to call-copilot's stored data: session "
             "history, categories, tools catalog, and content search over "
-            "video/call transcripts."
+            "call transcripts."
         ),
     )
 
@@ -50,7 +50,7 @@ def build_server():
         tools.search_content,
         name="search_content",
         description=(
-            "Combinable search over video/call segments. Optional filters "
+            "Combinable search over call segments. Optional filters "
             "(category_id, technology, title_query, text_query, source) "
             "combine with AND; omitted filters are ignored. Always bounded "
             "by limit/offset (default limit 50, max 200) — never an "
@@ -78,72 +78,23 @@ def build_server():
         tools.get_session,
         name="get_session",
         description=(
-            "Get a unified session (video or call, by session_id + source) "
-            "together with all of its segments in one call."
-        ),
-    )
-    server.add_tool(
-        tools.list_reports,
-        name="list_reports",
-        description=(
-            "List video sessions that already have a generated HTML "
-            "report, each with a file:// URL to open it directly. "
-            "Optional case-insensitive substring filter on title. Skips "
-            "reports whose file was deleted from disk."
-        ),
-    )
-    server.add_tool(
-        tools.get_report_url,
-        name="get_report_url",
-        description=(
-            "Get the file:// URL for one video session's report by "
-            "session_id, or null if it doesn't exist, has no report yet, "
-            "or the file was deleted from disk."
+            "Get a unified session (by session_id + source) together "
+            "with all of its segments in one call."
         ),
     )
     server.add_tool(
         tools.semantic_search,
         name="semantic_search",
         description=(
-            "Semantic (embedding-based) search across video and call "
-            "segments. Optional and best-effort: it MAY return an empty "
-            "list if this server's environment has no OPENAI_API_KEY or "
+            "Semantic (embedding-based) search across call segments. "
+            "Optional and best-effort: it MAY return an empty list if "
+            "this server's environment has no OPENAI_API_KEY or "
             "chromadb installed — an empty result does not mean the "
             "server is broken, it means semantic search is unavailable; "
             "use search_content for guaranteed full-text results."
         ),
     )
-    # The server's first write surface — separate flag, off by default:
-    # this originates NEW heavy work (network download + CPU/GPU
-    # transcription, minutes) from an arbitrary URL. Concurrency=1 is
-    # enforced atomically in
-    # src/db/video_sessions.py::try_start_processing_session (validated
-    # against real concurrent OS processes — see
-    # docs/next-steps/feature-proposals.md point 5 Hallazgo 3). Off by
-    # default; set MCP_ALLOW_VIDEO_PROCESSING=true to opt in.
-    if os.getenv("MCP_ALLOW_VIDEO_PROCESSING", "false").lower() == "true":
-        server.add_tool(
-            tools.start_video_processing,
-            name="start_video_processing",
-            description=(
-                "Start processing a video by URL (download, transcribe, "
-                "classify, generate report) in the background — returns "
-                "immediately with a session_id, never blocks until "
-                "finished. Only one video may process at a time: returns "
-                "{'ok': False, 'error': ...} if one is already running. "
-                "Poll get_video_processing_status(session_id) for progress."
-            ),
-        )
-        server.add_tool(
-            tools.get_video_processing_status,
-            name="get_video_processing_status",
-            description=(
-                "Poll the status of a video session (pending/processing/"
-                "done/error), with report_url once done. Returns "
-                "{'ok': False, 'error': ...} for an unknown session_id."
-            ),
-        )
-    # The server's second write surface — separate flag: this persists a
+    # The server's write surface — separate flag: this persists a
     # tool record the CALLING AGENT already researched/structured with its
     # own LLM (call-copilot never fetches a URL or calls an LLM for this).
     # Never overwrites an existing tool's enrichment on a name collision.

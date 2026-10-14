@@ -7,7 +7,7 @@ the existing classify_segments_batch, and persists them as CallSegment
 rows linked to the call session.
 
 Supported LLM backends: ollama (default) | gpt | claude
-  — mirrors the same backend-switch pattern as src/video/classifier.py.
+  — mirrors the same backend-switch pattern as src/processing/classifier.py.
 
 Open question (X.2): per-backend token ceiling for the grouper.
   - claude (claude-haiku-4-5-20251001): 4 096 output tokens max, 200 000 context
@@ -26,7 +26,7 @@ from src.db.database import CallSegment, get_categories, save_call_segment
 from src.llm.backend import call_llm_backend
 from src.processing.search_indexer import index_segment
 from src.processing.tool_extractor import ingest_tools
-from src.video.classifier import classify_segments_batch
+from src.processing.classifier import classify_segments_batch
 
 logger = logging.getLogger("call_copilot.processing.session_processor")
 

@@ -1,6 +1,7 @@
 """
-Unit tests for the unified_sessions view — a read-only SQL union of
-`video_sessions` and `call_sessions`, normalized to (id, source, title, created_at).
+Unit tests for the unified_sessions view — a read-only wrapper over
+`call_sessions`, normalized to (id, source, title, created_at) so a
+future second source can be unioned in without an API change for callers.
 """
 
 import sqlite3
@@ -38,16 +39,6 @@ class TestUnifiedSessionsViewMigration:
 
 
 class TestGetUnifiedSessions:
-    def test_includes_video_session(self, patched_db):
-        video_session = patched_db.create_video_session(title="My video", url="http://x")
-
-        results = patched_db.get_unified_sessions()
-
-        video_rows = [r for r in results if r.source == "video"]
-        assert len(video_rows) == 1
-        assert video_rows[0].id == video_session.id
-        assert video_rows[0].title == "My video"
-
     def test_includes_call_session(self, patched_db):
         call_session = patched_db.create_call_session(
             context="ctx", transcript_path="whisper-text/x.txt", title="My call"
@@ -74,8 +65,8 @@ class TestGetUnifiedSessions:
             ("ctx", "old.txt", older, "Older"),
         )
         conn.execute(
-            "INSERT INTO video_sessions (title, url, status, created_at) VALUES (?,?,?,?)",
-            ("Newer", "http://x", "done", newer),
+            "INSERT INTO call_sessions (context, transcript_path, created_at, title) VALUES (?,?,?,?)",
+            ("ctx", "new.txt", newer, "Newer"),
         )
         conn.commit()
         conn.close()

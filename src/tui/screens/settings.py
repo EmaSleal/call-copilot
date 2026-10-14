@@ -40,7 +40,7 @@ def validate_settings_form(values: dict) -> list[str]:
     — backends come from a constrained Select and API keys are free text.
     """
     errors: list[str] = []
-    for key in ("WHISPER_MODEL_CALL", "WHISPER_MODEL_VIDEO"):
+    for key in ("WHISPER_MODEL_CALL",):
         value = values.get(key, "")
         if value and value not in config_defaults.WHISPER_SIZES:
             errors.append(t("settings.invalid_whisper_size", key=key, value=value))
@@ -69,11 +69,10 @@ def diff_changed_keys(original: dict, new: dict) -> dict:
 
 
 def summarize_scopes(changed_keys) -> dict:
-    """Map each changed key to its translated restart/next-call/next-video badge text."""
+    """Map each changed key to its translated restart/next-call badge text."""
     labels = {
         config_defaults.Scope.RESTART: t("settings.scope_restart"),
         config_defaults.Scope.NEXT_CALL: t("settings.scope_next_call"),
-        config_defaults.Scope.NEXT_VIDEO: t("settings.scope_next_video"),
         config_defaults.Scope.MCP_RESTART: t("settings.scope_mcp_restart"),
     }
     return {key: labels[config_defaults.scope_of(key)] for key in changed_keys}
@@ -186,27 +185,12 @@ class SettingsScreen(ModalScreen):
                     id="settings-whisper-call",
                     value=config_defaults.whisper_model_call(),
                 )
-                yield Label(t("settings.whisper_video_label"), id="lbl-settings-whisper-video")
-                yield Select(
-                    [(size, size) for size in config_defaults.WHISPER_SIZES],
-                    id="settings-whisper-video",
-                    value=config_defaults.whisper_model_video(),
-                )
                 yield Label(
                     t("settings.silence_threshold_label"), id="lbl-settings-silence-threshold"
                 )
                 yield Input(
                     id="settings-silence-threshold",
                     value=str(config_defaults.silence_threshold_ms()),
-                )
-                yield Label(
-                    t("settings.mcp_video_processing_label"),
-                    id="lbl-settings-mcp-video-processing",
-                )
-                yield Select(
-                    [("false", "false"), ("true", "true")],
-                    id="settings-mcp-video-processing",
-                    value="true" if config_defaults.mcp_allow_video_processing() else "false",
                 )
                 yield Label(
                     t("settings.mcp_tool_ingestion_label"),
@@ -247,7 +231,6 @@ class SettingsScreen(ModalScreen):
         self.query_one("#lbl-settings-anthropic-key", Label).update(t("settings.anthropic_key_label"))
         self.query_one("#lbl-settings-deepgram-key", Label).update(t("settings.deepgram_key_label"))
         self.query_one("#lbl-settings-whisper-call", Label).update(t("settings.whisper_call_label"))
-        self.query_one("#lbl-settings-whisper-video", Label).update(t("settings.whisper_video_label"))
         self.query_one("#lbl-settings-silence-threshold", Label).update(
             t("settings.silence_threshold_label")
         )
@@ -256,9 +239,6 @@ class SettingsScreen(ModalScreen):
             t("settings.tech_scout_path_label")
         )
         self.query_one("#btn-settings-sync-tools", Button).label = t("settings.sync_tech_scout_button")
-        self.query_one("#lbl-settings-mcp-video-processing", Label).update(
-            t("settings.mcp_video_processing_label")
-        )
         self.query_one("#lbl-settings-mcp-tool-ingestion", Label).update(
             t("settings.mcp_tool_ingestion_label")
         )
@@ -273,11 +253,7 @@ class SettingsScreen(ModalScreen):
             "LLM_BACKEND": config_defaults.llm_backend(),
             "STT_BACKEND": config_defaults.stt_backend(),
             "WHISPER_MODEL_CALL": config_defaults.whisper_model_call(),
-            "WHISPER_MODEL_VIDEO": config_defaults.whisper_model_video(),
             "SILENCE_THRESHOLD_MS": str(config_defaults.silence_threshold_ms()),
-            "MCP_ALLOW_VIDEO_PROCESSING": (
-                "true" if config_defaults.mcp_allow_video_processing() else "false"
-            ),
             "MCP_ALLOW_TOOL_INGESTION": (
                 "true" if config_defaults.mcp_allow_tool_ingestion() else "false"
             ),
@@ -302,15 +278,9 @@ class SettingsScreen(ModalScreen):
             "WHISPER_MODEL_CALL": str(
                 self.query_one("#settings-whisper-call", Select).value
             ),
-            "WHISPER_MODEL_VIDEO": str(
-                self.query_one("#settings-whisper-video", Select).value
-            ),
             "SILENCE_THRESHOLD_MS": self.query_one(
                 "#settings-silence-threshold", Input
             ).value,
-            "MCP_ALLOW_VIDEO_PROCESSING": str(
-                self.query_one("#settings-mcp-video-processing", Select).value
-            ),
             "MCP_ALLOW_TOOL_INGESTION": str(
                 self.query_one("#settings-mcp-tool-ingestion", Select).value
             ),
@@ -356,7 +326,7 @@ class SettingsScreen(ModalScreen):
 
         if "LANGUAGE" in changed:
             # Applied immediately via retranslate_all(), not through the
-            # RESTART/NEXT_CALL/NEXT_VIDEO Scope model below — hot-swap, no
+            # RESTART/NEXT_CALL Scope model below — hot-swap, no
             # badge needed. Must happen before summarize_scopes()/t() calls
             # further down so the rest of this feedback line lands in the
             # newly active language too.

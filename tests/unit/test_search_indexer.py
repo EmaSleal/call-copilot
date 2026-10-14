@@ -1,9 +1,8 @@
 """
 Unit tests for src.processing.search_indexer — semantic search indexing
-for video segments and call segments (a third Chroma-backed search
-surface, alongside the live in-call RAGStore and the Tools Catalog).
-Coexists with the existing full-text SQL search (database.search_segments)
-— never replaces it.
+for call segments (a second Chroma-backed search surface, alongside the
+live in-call RAGStore). Coexists with the existing full-text SQL search
+(database.search_call_segments) — never replaces it.
 """
 
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -37,10 +36,10 @@ class TestIndexSegment:
         mock_store_cls = MagicMock(return_value=mock_store)
 
         with patch.object(search_indexer, "SegmentsSearchStore", mock_store_cls):
-            result = search_indexer.index_segment("video", 42, "hablamos de Deepgram")
+            result = search_indexer.index_segment("call", 42, "hablamos de Deepgram")
 
         assert result is True
-        mock_store.add_segment.assert_awaited_once_with("video", 42, "hablamos de Deepgram")
+        mock_store.add_segment.assert_awaited_once_with("call", 42, "hablamos de Deepgram")
 
     def test_without_openai_key_still_does_not_raise(self, no_openai_key):
         from src.processing import search_indexer
@@ -64,12 +63,12 @@ class TestForgetSegmentEmbeddings:
         mock_store_cls = MagicMock(return_value=mock_store)
 
         with patch.object(search_indexer, "SegmentsSearchStore", mock_store_cls):
-            search_indexer.forget_segment_embeddings("video", [1, 2, 3])
+            search_indexer.forget_segment_embeddings("call", [1, 2, 3])
 
         assert mock_store.delete_segment.await_count == 3
-        mock_store.delete_segment.assert_any_await("video", 1)
-        mock_store.delete_segment.assert_any_await("video", 2)
-        mock_store.delete_segment.assert_any_await("video", 3)
+        mock_store.delete_segment.assert_any_await("call", 1)
+        mock_store.delete_segment.assert_any_await("call", 2)
+        mock_store.delete_segment.assert_any_await("call", 3)
 
     def test_empty_ids_is_a_noop(self, with_openai_key):
         from src.processing import search_indexer
@@ -79,7 +78,7 @@ class TestForgetSegmentEmbeddings:
         mock_store_cls = MagicMock(return_value=mock_store)
 
         with patch.object(search_indexer, "SegmentsSearchStore", mock_store_cls):
-            search_indexer.forget_segment_embeddings("video", [])
+            search_indexer.forget_segment_embeddings("call", [])
 
         mock_store.delete_segment.assert_not_awaited()
 
@@ -93,19 +92,15 @@ class TestForgetSegmentEmbeddings:
         mock_store_cls = MagicMock(return_value=mock_store)
 
         with patch.object(search_indexer, "SegmentsSearchStore", mock_store_cls):
-            search_indexer.forget_segment_embeddings("video", [1])  # must not raise
+            search_indexer.forget_segment_embeddings("call", [1])  # must not raise
 
 
 class TestSearchSegmentsSemantic:
     @pytest.mark.asyncio
-    async def test_joins_video_and_call_results_back_to_sql_rows(self, patched_db, with_openai_key):
-        from src.db.database import CallSegment, Segment
+    async def test_joins_call_results_back_to_sql_rows(self, patched_db, with_openai_key):
+        from src.db.database import CallSegment
         from src.processing import search_indexer
 
-        video_session = patched_db.create_video_session(title="v", url="http://x")
-        video_seg = patched_db.save_segment(
-            Segment(id=None, session_id=video_session.id, start_s=0.0, end_s=1.0, text="usamos Deepgram")
-        )
         call_session = patched_db.create_call_session(context="ctx", transcript_path="whisper-text/x.txt")
         call_seg_id = patched_db.save_call_segment(
             CallSegment(id=None, call_session_id=call_session.id, sort_order=0, text="hablamos de OAuth")
@@ -113,19 +108,16 @@ class TestSearchSegmentsSemantic:
 
         mock_store = MagicMock()
         mock_store.search = AsyncMock(return_value=[
-            ("video", video_seg.id, 0.1),
             ("call", call_seg_id, 0.2),
         ])
         mock_store_cls = MagicMock(return_value=mock_store)
 
         with patch.object(search_indexer, "SegmentsSearchStore", mock_store_cls):
-            results = await search_indexer.search_segments_semantic("STT")
+            results = await search_indexer.search_segments_semantic("OAuth")
 
-        assert len(results) == 2
-        assert results[0]["source"] == "video"
-        assert results[0]["text"] == "usamos Deepgram"
-        assert results[1]["source"] == "call"
-        assert results[1]["text"] == "hablamos de OAuth"
+        assert len(results) == 1
+        assert results[0]["source"] == "call"
+        assert results[0]["text"] == "hablamos de OAuth"
 
     @pytest.mark.asyncio
     async def test_no_matches_returns_empty_list(self, patched_db, with_openai_key):
@@ -147,7 +139,7 @@ class TestSearchSegmentsSemantic:
         from src.processing import search_indexer
 
         mock_store = MagicMock()
-        mock_store.search = AsyncMock(return_value=[("video", 9999, 0.1)])
+        mock_store.search = AsyncMock(return_value=[("call", 9999, 0.1)])
         mock_store_cls = MagicMock(return_value=mock_store)
 
         with patch.object(search_indexer, "SegmentsSearchStore", mock_store_cls):

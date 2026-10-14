@@ -3,8 +3,7 @@ Pure-function tests for CategoriesTab's hierarchy display helper.
 
 `build_category_tree()` groups a flat `list[Category]` (as returned by
 `db.get_categories()`) into parent-then-children display order, without any
-Textual/DataTable dependency — mirrors the `_find_otro_category` precedent
-in `src/tui/tabs/video.py`.
+Textual/DataTable dependency.
 """
 
 from src.db.database import Category

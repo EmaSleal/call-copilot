@@ -1,8 +1,8 @@
 """
-Modal: reclasificar una categoría globalmente (video + llamadas, todas las
-sesiones). Launched from Historial's "Reclasificar categoría..." button —
-this used to live inline in Historial's body, but a dropdown + two buttons
-+ a suggestions list sitting permanently in the main browsing view read as
+Modal: reclasificar una categoría globalmente (todas las llamadas).
+Launched from Historial's "Reclasificar categoría..." button — this used
+to live inline in Historial's body, but a dropdown + two buttons + a
+suggestions list sitting permanently in the main browsing view read as
 cluttered/confusing for an action used only occasionally, so it moved to
 its own modal (same precedent as SettingsScreen/ProfileManagerScreen).
 """
@@ -30,7 +30,7 @@ class CategoryReclassifyModal(ModalScreen):
     """
     Self-contained workflow: pick a category → "Analizar" (read-only,
     suggests new sub-categories from ALL fragments currently in it,
-    video + call, every session) → mark which suggestions you want →
+    every call session) → mark which suggestions you want →
     "Agregar seleccionadas" (creates those categories, then reclassifies
     every fragment that was in the original category — moves what fits
     better, leaves what still belongs).
@@ -115,7 +115,7 @@ class CategoryReclassifyModal(ModalScreen):
             await self._add_selected_suggestions()
 
     async def _analyze_category(self, category_id: int) -> None:
-        from src.video.classifier import suggest_new_categories
+        from src.processing.classifier import suggest_new_categories
 
         fb = self.query_one("#reclassify-feedback", Label)
         sel = self.query_one("#reclassify-suggestions", SelectionList)
@@ -124,9 +124,8 @@ class CategoryReclassifyModal(ModalScreen):
 
         try:
             categories = db.get_categories()
-            video_segments = db.get_segments_by_category_global(category_id)
             call_segments = db.get_call_segments_by_category_global(category_id)
-            all_texts = [s.text for s in video_segments] + [s.text for s in call_segments]
+            all_texts = [s.text for s in call_segments]
 
             if not all_texts:
                 fb.update(f"[yellow]{t('category_reclassify.no_fragments')}[/yellow]")

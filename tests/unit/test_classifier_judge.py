@@ -1,5 +1,5 @@
 """
-Unit tests for PR2 — src/video/classifier.py dedup additions.
+Unit tests for PR2 — src/processing/classifier.py dedup additions.
 
 Two concerns, per design (sdd/categorias-jerarquicas, design obs #823, decision A5):
 
@@ -32,7 +32,7 @@ from src.db.database import Category
 class TestCallLlmCharacterization:
     def test_ollama_backend_kwargs(self, monkeypatch):
         from src.llm import backend as llm_backend
-        from src.video import classifier
+        from src.processing import classifier
 
         mock_openai_cls = MagicMock()
         mock_client = MagicMock()
@@ -58,7 +58,7 @@ class TestCallLlmCharacterization:
 
     def test_gpt_backend_kwargs(self, monkeypatch):
         from src.llm import backend as llm_backend
-        from src.video import classifier
+        from src.processing import classifier
 
         mock_openai_cls = MagicMock()
         mock_client = MagicMock()
@@ -82,7 +82,7 @@ class TestCallLlmCharacterization:
 
     def test_claude_backend_kwargs(self, monkeypatch):
         from src.llm import backend as llm_backend
-        from src.video import classifier
+        from src.processing import classifier
 
         mock_anthropic_cls = MagicMock()
         mock_client = MagicMock()
@@ -108,7 +108,7 @@ class TestCallLlmCharacterization:
 class TestCallSuggestLlmCharacterization:
     def test_ollama_backend_kwargs(self, monkeypatch):
         from src.llm import backend as llm_backend
-        from src.video import classifier
+        from src.processing import classifier
 
         mock_openai_cls = MagicMock()
         mock_client = MagicMock()
@@ -129,7 +129,7 @@ class TestCallSuggestLlmCharacterization:
 
     def test_gpt_backend_kwargs(self, monkeypatch):
         from src.llm import backend as llm_backend
-        from src.video import classifier
+        from src.processing import classifier
 
         mock_openai_cls = MagicMock()
         mock_client = MagicMock()
@@ -148,7 +148,7 @@ class TestCallSuggestLlmCharacterization:
 
     def test_claude_backend_kwargs(self, monkeypatch):
         from src.llm import backend as llm_backend
-        from src.video import classifier
+        from src.processing import classifier
 
         mock_anthropic_cls = MagicMock()
         mock_client = MagicMock()
@@ -178,7 +178,7 @@ EXISTING = [
 
 class TestJudgeCategoryDuplicate:
     def test_valid_match_returns_category_id(self):
-        from src.video import classifier
+        from src.processing import classifier
 
         raw = json.dumps({"verdict": "MATCH", "category_id": 1})
         with patch.object(classifier, "_call_judge_llm", return_value=raw):
@@ -187,7 +187,7 @@ class TestJudgeCategoryDuplicate:
         assert result == 1
 
     def test_match_with_unknown_id_returns_none(self):
-        from src.video import classifier
+        from src.processing import classifier
 
         raw = json.dumps({"verdict": "MATCH", "category_id": 999})
         with patch.object(classifier, "_call_judge_llm", return_value=raw):
@@ -196,7 +196,7 @@ class TestJudgeCategoryDuplicate:
         assert result is None
 
     def test_new_verdict_returns_none(self):
-        from src.video import classifier
+        from src.processing import classifier
 
         raw = json.dumps({"verdict": "NEW", "category_id": None})
         with patch.object(classifier, "_call_judge_llm", return_value=raw):
@@ -205,7 +205,7 @@ class TestJudgeCategoryDuplicate:
         assert result is None
 
     def test_junk_text_returns_none(self):
-        from src.video import classifier
+        from src.processing import classifier
 
         with patch.object(classifier, "_call_judge_llm", return_value="not json at all {{{"):
             result = classifier.judge_category_duplicate("Cocina", "desc", EXISTING)
@@ -213,7 +213,7 @@ class TestJudgeCategoryDuplicate:
         assert result is None
 
     def test_empty_response_returns_none(self):
-        from src.video import classifier
+        from src.processing import classifier
 
         with patch.object(classifier, "_call_judge_llm", return_value=""):
             result = classifier.judge_category_duplicate("Cocina", "desc", EXISTING)
@@ -221,7 +221,7 @@ class TestJudgeCategoryDuplicate:
         assert result is None
 
     def test_backend_exception_returns_none(self):
-        from src.video import classifier
+        from src.processing import classifier
 
         with patch.object(classifier, "_call_judge_llm", side_effect=RuntimeError("unreachable")):
             result = classifier.judge_category_duplicate("Cocina", "desc", EXISTING)
@@ -229,7 +229,7 @@ class TestJudgeCategoryDuplicate:
         assert result is None
 
     def test_no_existing_categories_returns_none_without_calling_backend(self):
-        from src.video import classifier
+        from src.processing import classifier
 
         with patch.object(classifier, "_call_judge_llm") as mock_call:
             result = classifier.judge_category_duplicate("Cocina", "desc", [])

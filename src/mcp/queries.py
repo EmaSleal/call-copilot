@@ -76,38 +76,16 @@ def _resolve_technology_call_session_ids(technology: str) -> list[int]:
     return [r["call_session_id"] for r in rows]
 
 
-def _technology_clause(technology: str, source: Optional[str]) -> tuple[str, list]:
-    """Build the OR-ed technology sub-clause per source.
-
-    - source == "call": curated tool_mentions match only.
-    - source == "video": text LIKE fallback only — tool_mentions rows only
-      ever reference call sessions, so video falls through to LIKE. An
-      intentional, documented accuracy gap, not a bug.
-    - source is None (unscoped): a segment matches if it satisfies EITHER
-      branch, evaluated against its own source.
-
-    Returns a `(sql_fragment, params)` pair. When no branch is applicable
-    (e.g. source="call" but no catalog/mention match at all), the fragment
-    is the always-false `"0=1"` so the caller gets an empty result instead
-    of an error.
-    """
-    branches: list[str] = []
-    params: list = []
-
-    if source != "video":
-        call_session_ids = _resolve_technology_call_session_ids(technology)
-        if call_session_ids:
-            placeholders = ",".join("?" for _ in call_session_ids)
-            branches.append(f"(us.source = 'call' AND us.session_id IN ({placeholders}))")
-            params.extend(call_session_ids)
-
-    if source != "call":
-        branches.append("(us.source != 'call' AND us.text LIKE ?)")
-        params.append(f"%{technology}%")
-
-    if not branches:
+def _technology_clause(technology: str) -> tuple[str, list]:
+    """Build the technology sub-clause: a curated `tool_mentions` match
+    against call sessions. Returns a `(sql_fragment, params)` pair — the
+    always-false `"0=1"` with no params when there's no match, so the
+    caller gets an empty result instead of an error."""
+    call_session_ids = _resolve_technology_call_session_ids(technology)
+    if not call_session_ids:
         return "0=1", []
-    return "(" + " OR ".join(branches) + ")", params
+    placeholders = ",".join("?" for _ in call_session_ids)
+    return f"us.session_id IN ({placeholders})", call_session_ids
 
 
 def search_content(
@@ -152,7 +130,7 @@ def search_content(
         params.append(source)
 
     if technology:
-        tech_sql, tech_params = _technology_clause(technology, source)
+        tech_sql, tech_params = _technology_clause(technology)
         clauses.append(tech_sql)
         params.extend(tech_params)
 

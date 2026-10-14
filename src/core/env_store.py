@@ -54,7 +54,7 @@ def write_values(values: dict, env_path: Path | None = None) -> None:
       p.ej. LLM_BACKEND=gpt → LLM_BACKEND='gpt' — así que comparamos contra
       el valor actual en disco antes de llamar a set_key).
     - Refresca el entorno del proceso en memoria al final, para que los
-      cambios de scope NEXT_CALL/NEXT_VIDEO tomen efecto sin reiniciar.
+      cambios de scope NEXT_CALL tomen efecto sin reiniciar.
     """
     env_path = Path(env_path) if env_path is not None else ENV_PATH
 
