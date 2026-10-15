@@ -159,7 +159,7 @@ class TestSearch:
 
 class TestSegmentsSearchStoreWithoutChromadb:
     """chromadb must stay a soft dependency — same pattern already applied
-    to RAGStore and ToolsCatalogStore."""
+    to RAGStore."""
 
     def test_construction_does_not_raise(self, monkeypatch, mock_openai_client):
         from src.rag.segments_store import SegmentsSearchStore

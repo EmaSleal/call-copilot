@@ -75,8 +75,8 @@ class TestRAGStoreBasics:
 
 class TestRAGStoreWithoutChromadb:
     """chromadb was a hard unconditional import before — without it, merely
-    starting the app (CallCopilotTab -> session_processor -> tool_extractor
-    -> ToolsCatalogStore, or pipeline.py -> RAGStore) would crash."""
+    starting the app (CallCopilotTab -> pipeline.py -> RAGStore) would
+    crash."""
 
     def test_construction_does_not_raise_without_chromadb(self, monkeypatch, mock_openai_client):
         from src.rag.chroma_store import RAGStore
